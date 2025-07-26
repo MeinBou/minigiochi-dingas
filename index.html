@@ -481,8 +481,8 @@
             <div class="flex flex-col md:flex-row gap-4 justify-center">
                 <button id="create-room-btn" class="btn-secondary text-white font-bold py-3 px-6 rounded-lg flex-1">Crea Stanza</button>
                 <div class="flex-1">
-                    <input type="text" id="join-code-input" placeholder="Codice stanza..." class="w-full bg-slate-700 text-white p-3 rounded-lg border-2 border-slate-600 focus:border-green-400 focus:outline-none" disabled>
-                    <button id="join-room-btn" class="mt-2 w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg disabled:bg-slate-600 disabled:cursor-not-allowed" disabled>Unisciti (Disabilitato)</button>
+                    <input type="text" id="join-code-input" placeholder="Codice stanza..." class="w-full bg-slate-700 text-white p-3 rounded-lg border-2 border-slate-600 focus:border-green-400 focus:outline-none">
+                    <button id="join-room-btn" class="mt-2 w-full btn-primary text-white font-bold py-3 px-4 rounded-lg">Unisciti a Stanza</button>
                 </div>
             </div>
         </div>
@@ -509,7 +509,7 @@
         <div id="room-wait-screen" class="hidden panel p-8 rounded-xl">
             <h2 class="text-3xl font-bold mb-2 text-cyan-300">Sala d'attesa</h2>
             <div class="mb-4 text-center">
-                <p class="text-slate-400">Codice stanza (solo per test):</p>
+                <p class="text-slate-400">Condividi questo codice con i tuoi amici!</p>
                 <div class="bg-slate-900 p-3 rounded-lg mt-2 inline-block">
                     <span id="room-code-display" class="text-2xl font-mono tracking-widest text-green-400"></span>
                 </div>
@@ -811,6 +811,25 @@
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-firestore-compat.js"></script>
+    <script>
+      // La tua configurazione personale di Firebase
+      const firebaseConfig = {
+        apiKey: "AIzaSyDq4EpjTmDOP21tHkQO-VmAPXuUcfx-p1E",
+        authDomain: "minigiochi-dingas.firebaseapp.com",
+        projectId: "minigiochi-dingas",
+        storageBucket: "minigiochi-dingas.appspot.com",
+        messagingSenderId: "887004200764",
+        appId: "1:887004200764:web:7316240dbf46d7c1996839",
+        measurementId: "G-PETFQRYK3Y"
+      };
+
+      // Inizializza Firebase
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore(); // Inizializziamo il nostro database
+    </script>
 
     <script>
         // --- STATO GLOBALE E DATI ---
@@ -820,6 +839,8 @@
         let tempSelectedCharId = null;
         let isActionLocked = false;
         let audioSynth, bombSynth, tickSynth, drinkSynth, greenLightSynth, redLightSynth, hideSound, foundSound, goodTapSound, badTapSound, deathDoorSound, safeDoorSound, heartbeatSound;
+        let unsubscribeRoomListener = null;
+        let currentRoomId = null;
 
         const ROSTER = [
             { id: 'gumball', name: 'Gumball', imageUrl: 'https://i.pinimg.com/736x/e4/2d/39/e42d393bf4ec481183d809a0b8cd1989.jpg' },
@@ -957,6 +978,7 @@
             document.getElementById('confirm-character-btn').addEventListener('click', handleCharacterConfirmation);
             document.getElementById('create-room-btn').addEventListener('click', () => showScreen('createRoom'));
             document.getElementById('confirm-create-room-btn').addEventListener('click', createRoom);
+            document.getElementById('join-room-btn').addEventListener('click', joinRoom);
             document.getElementById('add-cpu-btn').addEventListener('click', addCpu);
             document.getElementById('start-game-btn').addEventListener('click', startGame);
             document.getElementById('play-memory-again-btn').addEventListener('click', () => startNewGame('memory'));
@@ -1002,7 +1024,7 @@
                     Tone.start();
                 }
                 userNickname = input.value.trim();
-                currentUser = { id: `localUser_${Date.now()}`, nickname: userNickname };
+                currentUser = { id: `user_${Date.now()}_${Math.random()}`, nickname: userNickname };
                 showScreen('lobby');
             } else {
                 input.classList.add('shake');
@@ -1010,9 +1032,9 @@
             }
         }
         
-        function createRoom() {
+        async function createRoom() {
             const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-            localRoomData = {
+            const newRoomData = {
                 id: roomId,
                 hostId: currentUser.id,
                 players: [{ ...currentUser, score: 0, isHost: true, hasVoted: false, hasSelectedCharacter: false }],
@@ -1021,7 +1043,77 @@
                 cpuDifficulty: parseInt(document.getElementById('cpu-difficulty-slider').value),
                 championshipRounds: parseInt(document.getElementById('rounds-count-slider').value),
             };
-            renderAll();
+            
+            try {
+                await db.collection('stanze').doc(roomId).set(newRoomData);
+                listenToRoom(roomId);
+            } catch (error) {
+                console.error("Errore nella creazione della stanza:", error);
+                showModal("Impossibile creare la stanza. Riprova.");
+            }
+        }
+
+        async function joinRoom() {
+            const roomId = document.getElementById('join-code-input').value.toUpperCase().trim();
+            if (!roomId) {
+                showModal("Inserisci un codice stanza.");
+                return;
+            }
+
+            const roomRef = db.collection('stanze').doc(roomId);
+            try {
+                const doc = await roomRef.get();
+                if (!doc.exists) {
+                    showModal("Stanza non trovata.");
+                    return;
+                }
+
+                const roomData = doc.data();
+                if (roomData.players.length >= roomData.maxPlayers) {
+                    showModal("La stanza è piena.");
+                    return;
+                }
+
+                const newPlayer = { ...currentUser, score: 0, isHost: false, hasVoted: false, hasSelectedCharacter: false };
+                await roomRef.update({
+                    players: firebase.firestore.FieldValue.arrayUnion(newPlayer)
+                });
+                listenToRoom(roomId);
+
+            } catch (error) {
+                console.error("Errore nell'unirsi alla stanza:", error);
+                showModal("Impossibile unirsi alla stanza. Riprova.");
+            }
+        }
+
+        function listenToRoom(roomId) {
+            currentRoomId = roomId;
+            if (unsubscribeRoomListener) {
+                unsubscribeRoomListener();
+            }
+            unsubscribeRoomListener = db.collection('stanze').doc(roomId).onSnapshot((doc) => {
+                if (doc.exists) {
+                    localRoomData = doc.data();
+                    renderAll();
+                } else {
+                    // La stanza è stata eliminata
+                    showModal("La stanza è stata chiusa dall'host.");
+                    showScreen('lobby');
+                    localRoomData = null;
+                    currentRoomId = null;
+                    if (unsubscribeRoomListener) unsubscribeRoomListener();
+                }
+            }, (error) => {
+                console.error("Errore di ascolto:", error);
+                showModal("Errore di connessione con la stanza.");
+            });
+        }
+
+        function updateFirestore(updateData) {
+            if (currentRoomId) {
+                db.collection('stanze').doc(currentRoomId).update(updateData)
+                    .catch(error => console.error("Errore nell'aggiornamento:", error));
+            }
         }
 
         function updateWaitingRoomUI() {
@@ -1049,8 +1141,8 @@
                     <span class="font-bold">${crown} ${p.nickname}</span>`;
                 playerList.appendChild(playerDiv);
             });
-            document.getElementById('start-game-btn').disabled = localRoomData.players.length < 2;
-            document.getElementById('add-cpu-btn').disabled = localRoomData.players.length >= localRoomData.maxPlayers;
+            document.getElementById('start-game-btn').disabled = !isHost || localRoomData.players.length < 2;
+            document.getElementById('add-cpu-btn').disabled = !isHost || localRoomData.players.length >= localRoomData.maxPlayers;
         }
         
         function addCpu() {
@@ -1064,23 +1156,24 @@
                 hasVoted: true,
                 hasSelectedCharacter: true 
             };
-            localRoomData.players.push(newCPU);
-            renderAll();
+            updateFirestore({
+                players: firebase.firestore.FieldValue.arrayUnion(newCPU)
+            });
         }
 
         function handleRemoveCpu(e) {
             if (!e.target.classList.contains('remove-cpu-btn')) return;
-            
             const playerIdToRemove = e.target.dataset.playerId;
-            localRoomData.players = localRoomData.players.filter(p => p.id !== playerIdToRemove);
-            renderAll();
+            const playerToRemove = localRoomData.players.find(p => p.id === playerIdToRemove);
+            if (playerToRemove) {
+                updateFirestore({
+                    players: firebase.firestore.FieldValue.arrayRemove(playerToRemove)
+                });
+            }
         }
 
         function startGame() {
-            localRoomData.gameState = 'voting';
-            localRoomData.votes = {};
-            localRoomData.players.forEach(p => { if (!p.isCPU) p.hasVoted = false; });
-            renderAll();
+            updateFirestore({ gameState: 'voting', votes: {} });
         }
 
         function handleVote(e) {
@@ -1090,9 +1183,18 @@
                 const newVotes = localRoomData.votes || {};
                 if (!newVotes[vote]) newVotes[vote] = [];
                 newVotes[vote].push(currentUser.id);
-                localRoomData.votes = newVotes;
-                playerInRoom.hasVoted = true;
-                renderAll();
+
+                const updatedPlayers = localRoomData.players.map(p => {
+                    if (p.id === currentUser.id) {
+                        return { ...p, hasVoted: true };
+                    }
+                    return p;
+                });
+
+                updateFirestore({
+                    votes: newVotes,
+                    players: updatedPlayers
+                });
             }
         }
         
@@ -1105,18 +1207,6 @@
             } else {
                  document.getElementById('vote-options').classList.remove('hidden');
                  feedback.textContent = '';
-            }
-            const humanPlayers = localRoomData.players.filter(p => !p.isCPU);
-            const votedHumanPlayers = humanPlayers.filter(p => p.hasVoted);
-
-            if (votedHumanPlayers.length === humanPlayers.length) {
-                const votes = localRoomData.votes || {};
-                const freePlayVotes = votes['free-play']?.length || 0;
-                const championshipVotes = votes['championship']?.length || 0;
-                localRoomData.gameMode = championshipVotes > freePlayVotes ? 'championship' : 'free-play';
-                
-                localRoomData.gameState = 'character-selection';
-                renderAll();
             }
         }
         
@@ -1142,20 +1232,23 @@
             if (isTaken) return;
 
             tempSelectedCharId = charId;
-            document.querySelectorAll('.character-card').forEach(c => c.classList.remove('selected'));
-            document.querySelector(`.character-card[data-char-id="${charId}"]`).classList.add('selected');
-            document.getElementById('confirm-character-btn').disabled = false;
+            renderCharacterSelectionScreen(); // Re-render to show selection locally
         }
 
         function handleCharacterConfirmation() {
             if (!tempSelectedCharId) return;
-            const player = localRoomData.players.find(p => p.id === currentUser.id);
-            if (player) {
-                player.character = ROSTER.find(c => c.id === tempSelectedCharId);
-                player.hasSelectedCharacter = true;
-                tempSelectedCharId = null;
-                renderAll();
-            }
+            const updatedPlayers = localRoomData.players.map(p => {
+                if (p.id === currentUser.id) {
+                    return {
+                        ...p,
+                        character: ROSTER.find(c => c.id === tempSelectedCharId),
+                        hasSelectedCharacter: true
+                    };
+                }
+                return p;
+            });
+            tempSelectedCharId = null;
+            updateFirestore({ players: updatedPlayers });
         }
 
         function renderCharacterSelectionScreen() {
@@ -1169,58 +1262,44 @@
             if(me.hasSelectedCharacter) {
                 confirmBtn.disabled = true;
                 confirmBtn.textContent = "Scelta Confermata!";
+            } else {
+                confirmBtn.disabled = !tempSelectedCharId;
+                confirmBtn.textContent = "Conferma Scelta";
             }
 
             const takenCharIds = new Set(localRoomData.players.map(p => p.character?.id).filter(Boolean));
             document.querySelectorAll('.character-card').forEach(card => {
                 const charId = card.dataset.charId;
                 const overlay = card.querySelector('.taken-overlay');
+                
+                card.classList.remove('selected', 'taken');
+                overlay.classList.add('hidden');
+
+                if (charId === tempSelectedCharId) {
+                    card.classList.add('selected');
+                }
+
                 if (takenCharIds.has(charId)) {
                     card.classList.add('taken');
                     const owner = localRoomData.players.find(p => p.character?.id === charId);
                     overlay.innerHTML = `<img src="${owner.character.imageUrl}" title="${owner.nickname}">`;
                     overlay.classList.remove('hidden');
-                } else {
-                    card.classList.remove('taken');
-                    overlay.classList.add('hidden');
                 }
             });
-
-            if (selectedPlayers.length === humanPlayers.length) {
-                const availableChars = ROSTER.filter(char => !takenCharIds.has(char.id));
-                availableChars.sort(() => Math.random() - 0.5);
-                localRoomData.players.forEach(p => {
-                    if (p.isCPU && !p.character) {
-                        const char = availableChars.pop();
-                        if (char) {
-                           p.character = char;
-                           p.nickname = char.name; // Assegna il nome del personaggio come nickname per i CPU
-                        }
-                    }
-                });
-
-                if (localRoomData.gameMode === 'free-play') {
-                    localRoomData.gameState = 'minigame-selection';
-                } else {
-                    localRoomData.gameState = 'in-game';
-                    localRoomData.currentRound = 1;
-                    localRoomData.players.forEach(p => { p.score = 0; });
-                    localRoomData.gameSequence = ['memory', 'rps', 'lucky-dice', 'bomb', 'succofono', 'hide-and-seek', 'touch-and-go', 'death-door'];
-                    localRoomData.gameSequence.sort(() => Math.random() - 0.5);
-                    localRoomData.currentGame = localRoomData.gameSequence[0];
-                    localRoomData.currentPlayerIndex = Math.floor(Math.random() * localRoomData.players.length);
-                }
-                renderAll();
-            }
         }
         
         function startNewGame(gameName) {
-            localRoomData.gameState = 'in-game';
-            localRoomData.currentGame = gameName;
-            localRoomData.gameData = null; // Resetta i dati del gioco precedente
-            localRoomData.players.forEach(p => p.score = 0);
-            localRoomData.currentPlayerIndex = Math.floor(Math.random() * localRoomData.players.length);
-            renderAll();
+            if (localRoomData.hostId !== currentUser.id) return;
+            const update = {
+                gameState: 'in-game',
+                currentGame: gameName,
+                gameData: null,
+                currentPlayerIndex: Math.floor(Math.random() * localRoomData.players.length)
+            };
+            if (localRoomData.gameMode === 'free-play') {
+                update.players = localRoomData.players.map(p => ({ ...p, score: 0 }));
+            }
+            updateFirestore(update);
         }
         
         function hideIntroOverlay(overlayId, callback) {
@@ -1235,43 +1314,37 @@
         // --- LOGICA MEMORY ---
         const EMOJI_POOL = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🍎', '🍌', '🍇', '🍓', '🍑', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🌽', '🥕', '🧄', '🧅', '🥔', '🥐', '🥨', '🧀', '🍔', '🍕'];
         function initializeMemoryGame() {
-            localRoomData.gameData = { type: 'memory', status: 'intro' };
-            const introOverlay = document.getElementById('memory-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            if (localRoomData.hostId !== currentUser.id) return;
+            const gameData = { type: 'memory', status: 'intro' };
+            updateFirestore({ gameData });
         }
         function startMemoryGame() {
-            hideIntroOverlay('memory-intro-overlay', () => {
-                const gameData = localRoomData.gameData;
-                gameData.status = 'playing';
-                gameData.cpuMemory = {}; // Inizializza la memoria della CPU
+            if (localRoomData.hostId !== currentUser.id) return;
+            
+            const numPairs = 24; // Per una griglia 6x8
+            const cardPool = [...EMOJI_POOL].sort(() => 0.5 - Math.random()).slice(0, numPairs);
+            let cards = [...cardPool, ...cardPool];
+            cards.sort(() => 0.5 - Math.random());
 
-                const numPairs = 24; // Per una griglia 6x8
-                const cardPool = [...EMOJI_POOL].sort(() => 0.5 - Math.random()).slice(0, numPairs);
-                let cards = [...cardPool, ...cardPool];
-                cards.sort(() => 0.5 - Math.random());
-
-                gameData.board = cards.map((emoji, index) => ({
+            const newGameData = {
+                ...localRoomData.gameData,
+                status: 'playing',
+                cpuMemory: {},
+                board: cards.map((emoji, index) => ({
                     id: index,
-                    charId: emoji, // Usiamo l'emoji come ID
+                    charId: emoji,
                     isFlipped: false,
                     isMatched: false,
-                }));
-                gameData.flippedCards = [];
-                gameData.pairsFound = {};
-                localRoomData.players.forEach(p => gameData.pairsFound[p.id] = 0);
-                
-                isActionLocked = false;
-                renderMemoryGame();
-
-                const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
-                if (currentPlayer.isCPU) {
-                    setTimeout(runCpuTurn, 1500);
-                }
-            });
+                })),
+                flippedCards: [],
+                pairsFound: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+            };
+            updateFirestore({ gameData: newGameData });
         }
         function renderMemoryGame() {
             const gameData = localRoomData.gameData;
+            if (!gameData || !gameData.board) return;
+
             const board = document.getElementById('memory-board');
             board.innerHTML = '';
             const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
@@ -1308,126 +1381,66 @@
             });
         }
         function handleCardClick(cardId) {
-            if (isActionLocked) return;
-            const player = localRoomData.players[localRoomData.currentPlayerIndex];
-            if (player.isCPU) return;
+            const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+            if (isActionLocked || currentPlayer.id !== currentUser.id) return;
 
             const card = localRoomData.gameData.board.find(c => c.id === cardId);
             if (card.isFlipped || card.isMatched) return;
 
-            card.isFlipped = true;
-            localRoomData.gameData.flippedCards.push(card);
-            if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
-            renderMemoryGame();
+            const newBoard = [...localRoomData.gameData.board];
+            newBoard[cardId].isFlipped = true;
+            const newFlippedCards = [...localRoomData.gameData.flippedCards, newBoard[cardId]];
 
-            if (localRoomData.gameData.flippedCards.length === 2) {
-                isActionLocked = true;
+            isActionLocked = true;
+            if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
+            
+            const update = { 'gameData.board': newBoard, 'gameData.flippedCards': newFlippedCards };
+            updateFirestore(update);
+
+            if (newFlippedCards.length === 2) {
                 setTimeout(checkMatch, 1000);
+            } else {
+                isActionLocked = false;
             }
         }
         function checkMatch() {
+            if (localRoomData.hostId !== currentUser.id) return;
+
             const gameData = localRoomData.gameData;
             const [card1, card2] = gameData.flippedCards;
-            const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+            const currentPlayerId = localRoomData.players[localRoomData.currentPlayerIndex].id;
+            
+            let newBoard = [...gameData.board];
+            let newPairsFound = { ...gameData.pairsFound };
+            let nextPlayerIndex = localRoomData.currentPlayerIndex;
             
             if (card1.charId === card2.charId) {
-                card1.isMatched = true;
-                card2.isMatched = true;
-                gameData.pairsFound[currentPlayer.id]++;
+                newBoard.find(c => c.id === card1.id).isMatched = true;
+                newBoard.find(c => c.id === card2.id).isMatched = true;
+                newPairsFound[currentPlayerId]++;
                 if (audioSynth) audioSynth.triggerAttackRelease('G4', '8n');
-                
-                delete gameData.cpuMemory[card1.charId];
-
-                const allMatched = gameData.board.every(c => c.isMatched);
-                if (allMatched) {
-                    setTimeout(endMemoryGame, 1000);
-                    return;
-                }
             } else {
-                card1.isFlipped = false;
-                card2.isFlipped = false;
+                newBoard.find(c => c.id === card1.id).isFlipped = false;
+                newBoard.find(c => c.id === card2.id).isFlipped = false;
                 if (audioSynth) audioSynth.triggerAttackRelease('C3', '8n');
-                localRoomData.currentPlayerIndex = (localRoomData.currentPlayerIndex + 1) % localRoomData.players.length;
+                nextPlayerIndex = (localRoomData.currentPlayerIndex + 1) % localRoomData.players.length;
             }
             
-            gameData.flippedCards = [];
-            isActionLocked = false;
-            renderMemoryGame();
-            
-            const nextPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
-            if (nextPlayer.isCPU) {
-                setTimeout(runCpuTurn, 1500);
-            }
-        }
-        function runCpuTurn() {
-            isActionLocked = true;
-            const gameData = localRoomData.gameData;
-            const availableCards = gameData.board.filter(c => !c.isMatched && !c.isFlipped);
-            
-            // Logica CPU basata sulla difficoltà
-            const difficulty = localRoomData.cpuDifficulty; // 1-4
-            let card1, card2;
-
-            // Tentativo di trovare una coppia dalla memoria
-            let foundPair = false;
-            for (const charId in gameData.cpuMemory) {
-                if (gameData.cpuMemory[charId].length === 2) {
-                    const [id1, id2] = gameData.cpuMemory[charId];
-                    card1 = gameData.board.find(c => c.id === id1);
-                    card2 = gameData.board.find(c => c.id === id2);
-                    if (card1 && card2 && !card1.isMatched && !card2.isMatched) {
-                        foundPair = true;
-                        break;
-                    }
-                }
+            const allMatched = newBoard.every(c => c.isMatched);
+            if (allMatched) {
+                endMemoryGame();
+                return;
             }
 
-            // Se non trova una coppia, gioca in base alla difficoltà
-            if (!foundPair) {
-                card1 = availableCards[Math.floor(Math.random() * availableCards.length)];
-                
-                // Cerca il match in memoria
-                let knownMatch = null;
-                if (gameData.cpuMemory[card1.charId] && Math.random() < (difficulty * 0.25)) {
-                    const potentialMatchId = gameData.cpuMemory[card1.charId].find(id => id !== card1.id);
-                    if (potentialMatchId !== undefined) {
-                        const potentialMatchCard = availableCards.find(c => c.id === potentialMatchId);
-                        if (potentialMatchCard) {
-                            knownMatch = potentialMatchCard;
-                        }
-                    }
-                }
-
-                if (knownMatch) {
-                    card2 = knownMatch;
-                } else {
-                    const remainingCards = availableCards.filter(c => c.id !== card1.id);
-                    card2 = remainingCards[Math.floor(Math.random() * remainingCards.length)];
-                }
-            }
-
-            // Simula il click e aggiorna la memoria
-            const flipCard = (card) => {
-                if (!card) return;
-                card.isFlipped = true;
-                gameData.flippedCards.push(card);
-                if (!gameData.cpuMemory[card.charId]) gameData.cpuMemory[card.charId] = [];
-                if (!gameData.cpuMemory[card.charId].includes(card.id)) {
-                    gameData.cpuMemory[card.charId].push(card.id);
-                }
-                if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
-                renderMemoryGame();
-            };
-
-            setTimeout(() => {
-                flipCard(card1);
-                setTimeout(() => {
-                    flipCard(card2);
-                    setTimeout(checkMatch, 1000);
-                }, 1000);
-            }, 1000);
+            updateFirestore({
+                'gameData.board': newBoard,
+                'gameData.flippedCards': [],
+                'gameData.pairsFound': newPairsFound,
+                'currentPlayerIndex': nextPlayerIndex
+            });
         }
         function endMemoryGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             if (localRoomData.gameMode === 'championship') {
                 const playersWithTempScore = localRoomData.players.map(p => ({
                     ...p,
@@ -1436,31 +1449,27 @@
                 const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
                 awardChampionshipPoints(sortedPlayers);
             }
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            renderAll();
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState });
         }
 
         // --- LOGICA MORRA CINESE ---
         function initializeRPSGame() {
-            localRoomData.gameData = { type: 'rps', status: 'intro' };
-            const introOverlay = document.getElementById('rps-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            if (localRoomData.hostId !== currentUser.id) return;
+            updateFirestore({ gameData: { type: 'rps', status: 'intro' } });
         }
         function startRPSGame() {
-            hideIntroOverlay('rps-intro-overlay', () => {
-                const gameData = localRoomData.gameData;
-                gameData.status = 'playing';
-                gameData.log = [];
-                gameData.schedule = generateRoundRobinSchedule(localRoomData.players);
-                gameData.matchupIndex = 0;
-                gameData.matchupChoices = {};
-                gameData.tempScores = {};
-                localRoomData.players.forEach(p => gameData.tempScores[p.id] = 0);
-                isActionLocked = false;
-                renderRPSGame();
-                runRPSCpuTurn();
-            });
+            if (localRoomData.hostId !== currentUser.id) return;
+            const gameData = {
+                ...localRoomData.gameData,
+                status: 'playing',
+                log: [],
+                schedule: generateRoundRobinSchedule(localRoomData.players),
+                matchupIndex: 0,
+                matchupChoices: {},
+                tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+            };
+            updateFirestore({ gameData });
         }
         function generateRoundRobinSchedule(players) {
             const schedule = [];
@@ -1487,8 +1496,7 @@
             updateLeaderboard(document.getElementById('rps-leaderboard'), tempScorePlayers);
             
             if (gameData.matchupIndex >= gameData.schedule.length) {
-                endRPSGame();
-                return;
+                return; // Host will end the game
             }
 
             const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
@@ -1511,8 +1519,7 @@
                 </div>`;
             
             const isUserInMatch = currentUser.id === p1Id || currentUser.id === p2Id;
-            const userPlayer = localRoomData.players.find(p => p.id === currentUser.id);
-            if (isUserInMatch && !userPlayer.isCPU && !gameData.matchupChoices[currentUser.id]) {
+            if (isUserInMatch && !gameData.matchupChoices[currentUser.id]) {
                 controlsArea.innerHTML = `
                     <p class="mb-4 text-lg text-cyan-300">Fai la tua scelta!</p>
                     <div class="flex justify-center gap-4">
@@ -1523,72 +1530,14 @@
             }
         }
         function handleRPSChoice(choice) {
-            if (isActionLocked) return;
             const gameData = localRoomData.gameData;
-            gameData.matchupChoices[currentUser.id] = choice;
+            if (isActionLocked || gameData.matchupChoices[currentUser.id]) return;
             isActionLocked = true;
-            document.querySelectorAll('.rps-choice-btn').forEach(b => b.disabled = true);
-            resolveRPSMatchup();
-        }
-        function runRPSCpuTurn() {
-            const gameData = localRoomData.gameData;
-            if (gameData.matchupIndex >= gameData.schedule.length) return;
-            
-            const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
-            const player1 = localRoomData.players.find(p => p.id === p1Id);
-            const player2 = localRoomData.players.find(p => p.id === p2Id);
-            const choices = ['rock', 'paper', 'scissors'];
-
-            if (player1.isCPU && !gameData.matchupChoices[p1Id]) {
-                gameData.matchupChoices[p1Id] = choices[Math.floor(Math.random() * 3)];
-            }
-            if (player2.isCPU && !gameData.matchupChoices[p2Id]) {
-                gameData.matchupChoices[p2Id] = choices[Math.floor(Math.random() * 3)];
-            }
-            resolveRPSMatchup();
-        }
-        function resolveRPSMatchup() {
-            const gameData = localRoomData.gameData;
-            const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
-            const choice1 = gameData.matchupChoices[p1Id];
-            const choice2 = gameData.matchupChoices[p2Id];
-
-            if (!choice1 || !choice2) { // Non entrambi hanno scelto
-                isActionLocked = false;
-                return;
-            }
-
-            const player1 = localRoomData.players.find(p => p.id === p1Id);
-            const player2 = localRoomData.players.find(p => p.id === p2Id);
-            const outcomes = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
-            const icons = { rock: '✊', paper: '✋', scissors: '✌️' };
-            
-            document.getElementById('p1-choice-display').textContent = icons[choice1];
-            document.getElementById('p2-choice-display').textContent = icons[choice2];
-
-            let logEntry;
-            if (outcomes[choice1] === choice2) { // Player 1 vince
-                gameData.tempScores[p1Id] += 2;
-                logEntry = `<div class="p-1 rounded bg-blue-900/50"><b>${player1.nickname}</b> (${icons[choice1]}) batte <b>${player2.nickname}</b> (${icons[choice2]})</div>`;
-            } else if (outcomes[choice2] === choice1) { // Player 2 vince
-                gameData.tempScores[p2Id] += 2;
-                logEntry = `<div class="p-1 rounded bg-green-900/50"><b>${player2.nickname}</b> (${icons[choice2]}) batte <b>${player1.nickname}</b> (${icons[choice1]})</div>`;
-            } else { // Pareggio
-                gameData.tempScores[p1Id]++;
-                gameData.tempScores[p2Id]++;
-                logEntry = `<div class="p-1 rounded bg-slate-700/50">Pareggio tra <b>${player1.nickname}</b> e <b>${player2.nickname}</b> (${icons[choice1]})</div>`;
-            }
-            gameData.log.unshift(logEntry);
-
-            setTimeout(() => {
-                gameData.matchupIndex++;
-                gameData.matchupChoices = {};
-                isActionLocked = false;
-                renderRPSGame();
-                runRPSCpuTurn();
-            }, 2500);
+            const newChoices = { ...gameData.matchupChoices, [currentUser.id]: choice };
+            updateFirestore({ 'gameData.matchupChoices': newChoices });
         }
         function endRPSGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             if (localRoomData.gameMode === 'championship') {
                 const playersWithTempScore = localRoomData.players.map(p => ({
                     ...p,
@@ -1599,70 +1548,48 @@
             } else {
                  localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
             }
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            renderAll();
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
 
         // --- LOGICA DADO FORTUNATO (REFACTORED) ---
         const HUD_COLORS = ["border-red-500", "border-blue-500", "border-green-500", "border-yellow-500", "border-purple-500", "border-pink-500", "border-indigo-500", "border-teal-500"];
         function initializeLuckyDiceGame() {
-            localRoomData.gameData = { type: 'lucky-dice', status: 'intro' };
-            const introOverlay = document.getElementById('lucky-dice-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            if (localRoomData.hostId !== currentUser.id) return;
+            updateFirestore({ gameData: { type: 'lucky-dice', status: 'intro' } });
         }
         function startLuckyDiceGame() {
-            hideIntroOverlay('lucky-dice-intro-overlay', () => {
-                const gameData = localRoomData.gameData;
-                gameData.status = 'playing';
-                gameData.mainTimer = 180; // 3 minuti
-                gameData.playerProgress = {};
-                const shuffledColors = [...HUD_COLORS].sort(() => 0.5 - Math.random());
-                localRoomData.players.forEach((p, index) => {
-                    gameData.playerProgress[p.id] = {
-                        needed: [1, 2, 3, 4, 5, 6],
-                        collectedCount: 0,
-                        lastCollectionTime: 0,
-                        diceValue: '🎲',
-                        canRoll: true,
-                        rollCooldownTimer: null,
-                        hudColor: shuffledColors[index % shuffledColors.length]
-                    };
-                    if (p.isCPU) {
-                        scheduleCpuRoll(p.id);
-                    }
-                });
-                gameData.gameInterval = setInterval(updateLuckyDiceGame, 1000);
-                renderLuckyDiceGame();
+            if (localRoomData.hostId !== currentUser.id) return;
+            const gameData = {
+                ...localRoomData.gameData,
+                status: 'playing',
+                mainTimer: 180,
+                playerProgress: {}
+            };
+            const shuffledColors = [...HUD_COLORS].sort(() => 0.5 - Math.random());
+            localRoomData.players.forEach((p, index) => {
+                gameData.playerProgress[p.id] = {
+                    needed: [1, 2, 3, 4, 5, 6],
+                    collectedCount: 0,
+                    lastCollectionTime: 0,
+                    diceValue: '🎲',
+                    canRoll: true,
+                    hudColor: shuffledColors[index % shuffledColors.length]
+                };
             });
-        }
-        function updateLuckyDiceGame() {
-            const gameData = localRoomData.gameData;
-            if (gameData.status !== 'playing') return;
-
-            gameData.mainTimer--;
-
-            if (gameData.mainTimer <= 0 || localRoomData.players.every(p => gameData.playerProgress[p.id].needed.length === 0)) {
-                endLuckyDiceGame();
-            }
-            renderLuckyDiceGame();
+            updateFirestore({ gameData });
         }
         function handlePlayerRoll(playerId) {
             const gameData = localRoomData.gameData;
             const progress = gameData.playerProgress[playerId];
             if (!progress || !progress.canRoll || gameData.status !== 'playing' || progress.needed.length === 0) return;
 
-            progress.canRoll = false;
             const roll = Math.floor(Math.random() * 6) + 1;
-            progress.diceValue = roll;
             if(tickSynth) tickSynth.triggerAttackRelease("C4", "8n");
             
-            const diceEl = document.querySelector(`#player-dice-card-${playerId} .player-dice-display`);
-            if (diceEl) {
-                diceEl.classList.add('rolling');
-                setTimeout(() => diceEl.classList.remove('rolling'), 200);
-            }
-
+            progress.canRoll = false;
+            progress.diceValue = roll;
+            
             if (progress.needed.includes(roll)) {
                 progress.needed = progress.needed.filter(n => n !== roll);
                 progress.collectedCount++;
@@ -1670,38 +1597,23 @@
                 if(goodTapSound) goodTapSound.triggerAttackRelease("G5", "8n");
             }
             
-            renderLuckyDiceGame(); // Update UI immediately
+            updateFirestore({ [`gameData.playerProgress.${playerId}`]: progress });
 
-            progress.rollCooldownTimer = setTimeout(() => {
-                progress.canRoll = true;
-                const player = localRoomData.players.find(p => p.id === playerId);
-                if (player && player.isCPU) {
-                    scheduleCpuRoll(playerId);
+            setTimeout(() => {
+                const currentProgress = localRoomData.gameData.playerProgress[playerId];
+                if (currentProgress) {
+                    currentProgress.canRoll = true;
+                    updateFirestore({ [`gameData.playerProgress.${playerId}`]: currentProgress });
                 }
-                renderLuckyDiceGame(); // Update button state
             }, 3000);
-        }
-        function scheduleCpuRoll(cpuId) {
-            const gameData = localRoomData.gameData;
-            if (!gameData || !gameData.playerProgress) { // Defensive check
-                console.error("Attempted to schedule CPU roll before gameData.playerProgress was initialized.");
-                return;
-            }
-            const progress = gameData.playerProgress[cpuId];
-            if (!progress || !progress.canRoll || gameData.status !== 'playing' || progress.needed.length === 0) return;
-
-            const delay = 100 + Math.random() * 500; // CPU reaction time
-            setTimeout(() => handlePlayerRoll(cpuId), delay);
         }
         function renderLuckyDiceGame() {
             const gameData = localRoomData.gameData;
             if (!gameData.playerProgress) return;
-
-            // Render Timers
+            
             const mainTimerEl = document.getElementById('lucky-dice-main-timer');
             if(mainTimerEl) mainTimerEl.textContent = `0${Math.floor(gameData.mainTimer / 60)}:${String(gameData.mainTimer % 60).padStart(2, '0')}`;
             
-            // Render Player Cards
             const playersArea = document.getElementById('lucky-dice-players-area');
             playersArea.innerHTML = '';
             localRoomData.players.forEach(player => {
@@ -1741,7 +1653,6 @@
                 playersArea.appendChild(card);
             });
 
-            // Render Live Leaderboard
             const leaderboardEl = document.getElementById('lucky-dice-leaderboard');
             leaderboardEl.innerHTML = '';
             const sortedPlayers = [...localRoomData.players].sort((a, b) => {
@@ -1766,13 +1677,8 @@
             });
         }
         function endLuckyDiceGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            clearInterval(gameData.gameInterval);
-            localRoomData.players.forEach(p => {
-                if (gameData.playerProgress[p.id] && gameData.playerProgress[p.id].rollCooldownTimer) {
-                    clearTimeout(gameData.playerProgress[p.id].rollCooldownTimer);
-                }
-            });
             
             const sortedPlayers = [...localRoomData.players].sort((a, b) => {
                 const progressA = gameData.playerProgress[a.id];
@@ -1791,78 +1697,34 @@
                 });
             }
 
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            setTimeout(renderAll, 2000);
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
         
         // --- LOGICA BOMBA (REFACTORED) ---
         function initializeBombGame() {
-            localRoomData.gameData = { type: 'bomb', status: 'intro' };
-            const introOverlay = document.getElementById('bomb-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            if (localRoomData.hostId !== currentUser.id) return;
+            updateFirestore({ gameData: { type: 'bomb', status: 'intro' } });
         }
         function startBombGame() {
-            hideIntroOverlay('bomb-intro-overlay', () => {
-                const gameData = localRoomData.gameData;
-                gameData.status = 'playing';
-                gameData.activePlayerIds = localRoomData.players.map(p => p.id);
-                gameData.eliminatedPlayerIds = [];
-                gameData.bombHolderIndex = Math.floor(Math.random() * gameData.activePlayerIds.length);
-                startBombSubRound();
-            });
-        }
-        function startBombSubRound() {
-            const gameData = localRoomData.gameData;
-            if (gameData.activePlayerIds.length <= 1) {
-                endBombGame();
-                return;
-            }
-            gameData.bombHolderIndex = gameData.bombHolderIndex % gameData.activePlayerIds.length;
-            gameData.bombTimer = Math.random() * 5 + 7;
-            if (gameData.tickInterval) clearInterval(gameData.tickInterval);
-            gameData.tickInterval = setInterval(updateBombGame, 100);
-            isActionLocked = false;
-            renderBombGame();
-
-            const currentPlayerWithBomb = localRoomData.players.find(p => p.id === gameData.activePlayerIds[gameData.bombHolderIndex]);
-            if (currentPlayerWithBomb && currentPlayerWithBomb.isCPU) {
-                const passDelay = 500 + Math.random() * 1000 * (5 - localRoomData.cpuDifficulty);
-                setTimeout(handlePassBomb, passDelay);
-            }
-        }
-        function updateBombGame() {
-            const gameData = localRoomData.gameData;
-            if (gameData.status !== 'playing') return;
-            gameData.bombTimer -= 0.1;
-
-            if (gameData.bombTimer <= 0) {
-                clearInterval(gameData.tickInterval);
-                if (bombSynth) bombSynth.triggerAttackRelease("8n");
-                
-                const eliminatedPlayerId = gameData.activePlayerIds.splice(gameData.bombHolderIndex, 1)[0];
-                gameData.eliminatedPlayerIds.push(eliminatedPlayerId);
-                
-                renderBombGame(); 
-                setTimeout(startBombSubRound, 2000);
-            }
+            if (localRoomData.hostId !== currentUser.id) return;
+            const gameData = {
+                ...localRoomData.gameData,
+                status: 'playing',
+                activePlayerIds: localRoomData.players.map(p => p.id),
+                eliminatedPlayerIds: [],
+                bombHolderIndex: Math.floor(Math.random() * localRoomData.players.length)
+            };
+            updateFirestore({ gameData });
         }
         function handlePassBomb() {
             const gameData = localRoomData.gameData;
             const currentPlayerId = gameData.activePlayerIds[gameData.bombHolderIndex];
-            if (isActionLocked || (currentUser.id !== currentPlayerId && !localRoomData.players.find(p => p.id === currentPlayerId)?.isCPU)) return;
+            if (isActionLocked || currentUser.id !== currentPlayerId) return;
 
             isActionLocked = true;
-            gameData.bombHolderIndex = (gameData.bombHolderIndex + 1) % gameData.activePlayerIds.length;
-            renderBombGame();
-
-            const nextPlayer = localRoomData.players.find(p => p.id === gameData.activePlayerIds[gameData.bombHolderIndex]);
-            if (nextPlayer.isCPU) {
-                const passDelay = 500 + Math.random() * 1000 * (5 - localRoomData.cpuDifficulty);
-                setTimeout(handlePassBomb, passDelay);
-            } else {
-                isActionLocked = false;
-            }
+            const nextIndex = (gameData.bombHolderIndex + 1) % gameData.activePlayerIds.length;
+            updateFirestore({ 'gameData.bombHolderIndex': nextIndex });
         }
         function renderBombGame() {
             const gameData = localRoomData.gameData;
@@ -1913,8 +1775,8 @@
             document.getElementById('pass-bomb-btn').disabled = (currentUser.id !== bombHolderId || isActionLocked);
         }
         function endBombGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            if (gameData.tickInterval) clearInterval(gameData.tickInterval);
             
             const winnerId = gameData.activePlayerIds[0];
             
@@ -1930,8 +1792,8 @@
                 });
             }
             
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            setTimeout(renderAll, 2000);
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
         
         // --- LOGICA SUCCOFONO (REFACTORED) ---
@@ -1941,102 +1803,48 @@
         const JUICE_COLORS = ["#ff6347", "#90ee90", "#add8e6", "#ffd700", "#dda0dd", "#ff7f50", "#00ced1", "#ffc0cb"];
 
         function initializeSuccofonoGame() {
-            localRoomData.gameData = { type: 'succofono', status: 'intro' };
-            const introOverlay = document.getElementById('succofono-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            if (localRoomData.hostId !== currentUser.id) return;
+            updateFirestore({ gameData: { type: 'succofono', status: 'intro' } });
         }
         function startSuccofonoGame() {
-            hideIntroOverlay('succofono-intro-overlay', () => {
-                const gameData = localRoomData.gameData;
-                gameData.status = 'playing';
-                gameData.light = 'red';
-                gameData.players = {};
-                const shuffledColors = [...JUICE_COLORS].sort(() => 0.5 - Math.random());
-                localRoomData.players.forEach((p, index) => {
-                    gameData.players[p.id] = { 
-                        juice: 0, 
-                        isFinished: false,
-                        finishTime: null,
-                        juiceColor: shuffledColors[index % shuffledColors.length],
-                        cpuActionTimer: null
-                    };
-                });
-                
-                gameData.gameTimer = setInterval(updateSuccofonoGame, 1000 / 60); // 60fps
-                gameData.lightTimer = setTimeout(toggleTrafficLight, 2000 + Math.random() * 3000);
-                
-                document.getElementById('drink-btn').disabled = false;
-                renderSuccofonoGame();
+            if (localRoomData.hostId !== currentUser.id) return;
+            const gameData = {
+                ...localRoomData.gameData,
+                status: 'playing',
+                light: 'red',
+                players: {}
+            };
+            const shuffledColors = [...JUICE_COLORS].sort(() => 0.5 - Math.random());
+            localRoomData.players.forEach((p, index) => {
+                gameData.players[p.id] = { 
+                    juice: 0, 
+                    isFinished: false,
+                    finishTime: null,
+                    juiceColor: shuffledColors[index % shuffledColors.length]
+                };
             });
-        }
-        function toggleTrafficLight() {
-            const gameData = localRoomData.gameData;
-            if (gameData.status !== 'playing') return;
-            
-            gameData.light = (gameData.light === 'red') ? 'green' : 'red';
-            if(gameData.light === 'green' && greenLightSynth) greenLightSynth.triggerAttackRelease('C5', '8n');
-            if(gameData.light === 'red' && redLightSynth) redLightSynth.triggerAttackRelease('G3', '8n');
-
-            const nextToggle = (gameData.light === 'red' ? 2000 : 3000) + Math.random() * 2000;
-            gameData.lightTimer = setTimeout(toggleTrafficLight, nextToggle);
-            renderSuccofonoGame();
-        }
-        function updateSuccofonoGame() {
-            const gameData = localRoomData.gameData;
-            if (gameData.status !== 'playing') return;
-
-            let activePlayers = 0;
-            localRoomData.players.forEach(p => {
-                const pData = gameData.players[p.id];
-                if (pData.isFinished) return;
-                activePlayers++;
-
-                if (p.isCPU) {
-                    runSuccofonoCpu(p, pData);
-                }
-            });
-
-            if (activePlayers <= 1) {
-                endSuccofonoGame();
-                return;
-            }
-            renderSuccofonoGame();
-        }
-        function runSuccofonoCpu(player, playerData) {
-            const gameData = localRoomData.gameData;
-            if (playerData.cpuActionTimer === null) {
-                const baseInterval = 250 - (localRoomData.cpuDifficulty * 40);
-                playerData.cpuActionTimer = setTimeout(() => {
-                    const willPress = Math.random();
-                    let mistakeChance = 0.2 - (localRoomData.cpuDifficulty * 0.04);
-                    if (localRoomData.cpuDifficulty === 4) mistakeChance = 0;
-                    
-                    if (gameData.light === 'green' && willPress > 0.1) {
-                        handleDrinkPress(player.id);
-                    } else if (gameData.light === 'red' && willPress < mistakeChance) {
-                        handleDrinkPress(player.id);
-                    }
-                    playerData.cpuActionTimer = null;
-                }, baseInterval + Math.random() * 100);
-            }
+            updateFirestore({ gameData });
         }
         function handleDrinkPress(playerId = currentUser.id) {
             const gameData = localRoomData.gameData;
             const pData = gameData.players[playerId];
             if (!pData || pData.isFinished || gameData.status !== 'playing') return;
 
+            let newJuice = pData.juice;
             if (gameData.light === 'green') {
-                pData.juice = Math.min(MAX_JUICE_LEVEL, pData.juice + JUICE_CLICK_FILL);
+                newJuice = Math.min(MAX_JUICE_LEVEL, pData.juice + JUICE_CLICK_FILL);
                 if(drinkSynth) drinkSynth.triggerAttackRelease('C4', '16n');
-                if (pData.juice >= MAX_JUICE_LEVEL) {
-                    pData.isFinished = true;
-                    pData.finishTime = Date.now();
-                }
             } else { // Red light
-                pData.juice = Math.max(0, pData.juice - JUICE_PENALTY_DRAIN);
+                newJuice = Math.max(0, pData.juice - JUICE_PENALTY_DRAIN);
                 if(badTapSound) badTapSound.triggerAttackRelease('A2', '8n');
             }
+            
+            const update = { [`gameData.players.${playerId}.juice`]: newJuice };
+            if (newJuice >= MAX_JUICE_LEVEL) {
+                update[`gameData.players.${playerId}.isFinished`] = true;
+                update[`gameData.players.${playerId}.finishTime`] = Date.now();
+            }
+            updateFirestore(update);
         }
         function renderSuccofonoGame() {
             const gameData = localRoomData.gameData;
@@ -2063,13 +1871,8 @@
             });
         }
         function endSuccofonoGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            if (gameData.status === 'finished') return;
-            gameData.status = 'finished';
-
-            clearInterval(gameData.gameTimer);
-            clearTimeout(gameData.lightTimer);
-            document.getElementById('drink-btn').disabled = true;
 
             const sortedPlayers = [...localRoomData.players].sort((a, b) => {
                 const pA = gameData.players[a.id];
@@ -2088,39 +1891,43 @@
                 });
             }
 
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            setTimeout(renderAll, 2000);
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
         
         // --- LOGICA ICONA MISTERIOSA ---
         function initializeHideAndSeekGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
              hideIntroOverlay('hns-intro-overlay', () => {
                 const gameData = { 
                     type: 'hide-and-seek', 
                     status: 'round-start',
                     seekerOrder: [...localRoomData.players].sort(() => Math.random() - 0.5).map(p => p.id),
                     currentSeekerIndex: 0,
-                    round: 0
+                    round: 0,
+                    tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
                 };
-                localRoomData.gameData = gameData;
-                localRoomData.players.forEach(p => p.score = 0); // Reset total score
-                startHnsRound();
+                updateFirestore({ gameData });
              });
         }
         function startHnsRound() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            gameData.round++;
-            gameData.status = 'hiding';
-            gameData.seekerId = gameData.seekerOrder[gameData.currentSeekerIndex];
-            gameData.hiders = localRoomData.players.filter(p => p.id !== gameData.seekerId).map(p => ({ id: p.id, spotId: null, found: false }));
-            gameData.hidingSpots = [];
-            gameData.timer = 15;
-            gameData.attemptsLeft = 5;
+            const newRoundData = {
+                ...gameData,
+                round: gameData.round + 1,
+                status: 'hiding',
+                seekerId: gameData.seekerOrder[gameData.currentSeekerIndex],
+                hiders: localRoomData.players.filter(p => p.id !== gameData.seekerOrder[gameData.currentSeekerIndex]).map(p => ({ id: p.id, spotId: null, found: false })),
+                hidingSpots: [],
+                timer: 15,
+                attemptsLeft: 5
+            };
 
             const numSpots = 7;
             for(let i = 0; i < numSpots; i++) {
                 const angle = (i / numSpots) * 2 * Math.PI;
-                gameData.hidingSpots.push({
+                newRoundData.hidingSpots.push({
                     id: i,
                     x: 50 + 35 * Math.cos(angle),
                     y: 50 + 35 * Math.sin(angle),
@@ -2128,118 +1935,67 @@
                     clicked: false
                 });
             }
-            
-            gameData.hiders.forEach(h => {
-                const player = localRoomData.players.find(p => p.id === h.id);
-                if (player.isCPU) {
-                    setTimeout(() => {
-                       const availableSpots = gameData.hidingSpots;
-                       if(availableSpots.length > 0) {
-                           h.spotId = availableSpots[Math.floor(Math.random() * availableSpots.length)].id;
-                       }
-                    }, 1000 + Math.random() * 4000);
-                }
-            });
-
-            if(gameData.roundTimer) clearInterval(gameData.roundTimer);
-            gameData.roundTimer = setInterval(updateHnsTimer, 1000);
-            renderHideAndSeekGame();
-        }
-        function updateHnsTimer() {
-            const gameData = localRoomData.gameData;
-            gameData.timer--;
-            if (gameData.timer <= 0) {
-                clearInterval(gameData.roundTimer);
-                if (gameData.status === 'hiding') {
-                    gameData.hiders.forEach(h => {
-                        if (h.spotId === null) {
-                            const availableSpots = gameData.hidingSpots;
-                            if(availableSpots.length > 0) h.spotId = availableSpots[0].id;
-                        }
-                    });
-                    startHnsSeekingPhase();
-                }
-            }
-            renderHideAndSeekGame();
-        }
-        function startHnsSeekingPhase() {
-            const gameData = localRoomData.gameData;
-            gameData.status = 'seeking';
-            renderHideAndSeekGame();
-
-            const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
-            if(seeker.isCPU) {
-                setTimeout(runHnsCpuSeeker, 1500);
-            }
-        }
-        function runHnsCpuSeeker() {
-            const gameData = localRoomData.gameData;
-            if(gameData.status !== 'seeking' || gameData.attemptsLeft <= 0) return;
-
-            const unclickedSpots = gameData.hidingSpots.filter(s => !s.clicked);
-            if(unclickedSpots.length > 0) {
-                const spotToClick = unclickedSpots[Math.floor(Math.random() * unclickedSpots.length)].id;
-                handleHnsSpotClick(spotToClick);
-
-                const allFound = gameData.hiders.every(h => h.found);
-                if(gameData.attemptsLeft > 0 && !allFound) {
-                    setTimeout(runHnsCpuSeeker, 1500 - (localRoomData.cpuDifficulty * 200));
-                }
-            }
+            updateFirestore({ gameData: newRoundData });
         }
         function handleHnsSpotClick(spotId) {
             const gameData = localRoomData.gameData;
             const me = localRoomData.players.find(p => p.id === currentUser.id);
 
             if (gameData.status === 'hiding' && me.id !== gameData.seekerId) {
-                const myHiderData = gameData.hiders.find(h => h.id === me.id);
+                const hidersCopy = [...gameData.hiders];
+                const myHiderData = hidersCopy.find(h => h.id === me.id);
                 myHiderData.spotId = spotId;
                 if(hideSound) hideSound.triggerAttackRelease("C4", "8n");
-                renderHideAndSeekGame();
-            } else if (gameData.status === 'seeking' && (me.id === gameData.seekerId || localRoomData.players.find(p => p.id === gameData.seekerId).isCPU)) {
+                updateFirestore({ 'gameData.hiders': hidersCopy });
+            } else if (gameData.status === 'seeking' && me.id === gameData.seekerId) {
                 const spot = gameData.hidingSpots.find(s => s.id === spotId);
                 if (spot.clicked) return;
 
-                spot.clicked = true;
-                gameData.attemptsLeft--;
+                const newSpots = [...gameData.hidingSpots];
+                newSpots[spotId].clicked = true;
                 
-                const hiderInSpot = gameData.hiders.find(h => h.spotId === spotId && !h.found);
+                const hidersCopy = [...gameData.hiders];
+                const hiderInSpot = hidersCopy.find(h => h.spotId === spotId && !h.found);
+                
+                const newTempScores = { ...gameData.tempScores };
+
                 if (hiderInSpot) {
                     hiderInSpot.found = true;
                     if(foundSound) foundSound.triggerAttackRelease("G5", "4n");
-                    const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
-                    seeker.score += 1;
+                    newTempScores[gameData.seekerId]++;
                 } else {
                     if(badTapSound) badTapSound.triggerAttackRelease("C3", "8n");
                 }
                 
-                const allFound = gameData.hiders.every(h => h.found);
-                if (allFound || gameData.attemptsLeft <= 0) {
-                    setTimeout(endHnsRound, 1500);
-                }
-                renderHideAndSeekGame();
+                updateFirestore({
+                    'gameData.hidingSpots': newSpots,
+                    'gameData.attemptsLeft': gameData.attemptsLeft - 1,
+                    'gameData.hiders': hidersCopy,
+                    'gameData.tempScores': newTempScores
+                });
             }
         }
         function endHnsRound() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            gameData.status = 'round-reveal';
-            renderHideAndSeekGame(); // Render one last time to show final state
-
-            setTimeout(() => {
-                gameData.hiders.forEach(h => {
-                    if (!h.found) {
-                        const player = localRoomData.players.find(p => p.id === h.id);
-                        player.score += 2;
-                    }
-                });
-
-                gameData.currentSeekerIndex++;
-                if (gameData.currentSeekerIndex >= localRoomData.players.length) {
-                    endHnsGame();
-                } else {
-                    startHnsRound();
+            
+            const newTempScores = { ...gameData.tempScores };
+            gameData.hiders.forEach(h => {
+                if (!h.found) {
+                    newTempScores[h.id] += 2;
                 }
-            }, 4000); // Wait 4 seconds to show results before next round
+            });
+
+            const nextSeekerIndex = gameData.currentSeekerIndex + 1;
+            if (nextSeekerIndex >= localRoomData.players.length) {
+                updateFirestore({ 'gameData.status': 'finished', 'gameData.tempScores': newTempScores });
+            } else {
+                updateFirestore({ 
+                    'gameData.status': 'round-start', 
+                    'gameData.currentSeekerIndex': nextSeekerIndex,
+                    'gameData.tempScores': newTempScores
+                });
+            }
         }
         function renderHideAndSeekGame() {
             const gameData = localRoomData.gameData;
@@ -2329,21 +2085,25 @@
                     capturedArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-10 h-10 rounded-full object-cover" title="${player.nickname}">`;
                 });
             }
-            updateLeaderboard(document.getElementById('hns-leaderboard'), localRoomData.players);
+            const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
+            updateLeaderboard(document.getElementById('hns-leaderboard'), tempScorePlayers);
         }
         function endHnsGame() {
-            const gameData = localRoomData.gameData;
-            if (gameData.status === 'finished') return;
-            gameData.status = 'finished';
-            clearInterval(gameData.roundTimer);
+            if (localRoomData.hostId !== currentUser.id) return;
             
             if (localRoomData.gameMode === 'championship') {
-                const sortedPlayers = [...localRoomData.players].sort((a,b) => b.score - a.score);
+                const playersWithTempScore = localRoomData.players.map(p => ({
+                    ...p,
+                    tempScore: localRoomData.gameData.tempScores[p.id] || 0
+                }));
+                const sortedPlayers = playersWithTempScore.sort((a,b) => b.tempScore - a.tempScore);
                 awardChampionshipPoints(sortedPlayers);
+            } else {
+                localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
             }
 
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            setTimeout(renderAll, 2000);
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
         
         // --- LOGICA TOCCO AL VOLO ---
@@ -2352,26 +2112,18 @@
             negative: [ { id: 'bomb', url: 'https://em-content.zobj.net/source/apple/354/bomb_1f4a3.png', score: -1 }, { id: 'skull', url: 'https://em-content.zobj.net/source/apple/354/skull_1f480.png', score: -1 } ],
         };
         function initializeTouchAndGoGame() {
-            localRoomData.gameData = { type: 'touch-and-go', status: 'intro' };
-            const introOverlay = document.getElementById('tag-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            if (localRoomData.hostId !== currentUser.id) return;
+            updateFirestore({ gameData: { type: 'touch-and-go', status: 'intro' } });
         }
         function startTouchAndGoGame() {
-             hideIntroOverlay('tag-intro-overlay', () => {
-                const gameData = localRoomData.gameData;
-                gameData.status = 'playing';
-                gameData.timer = 60;
-                gameData.tempScores = {};
-                localRoomData.players.forEach(p => gameData.tempScores[p.id] = 0);
-                
-                populateTagLegend();
-                gameData.gameTimer = setInterval(() => updateTouchAndGoGame('timer'), 1000);
-                gameData.spawnInterval = setInterval(() => spawnTagItem(), 500);
-                gameData.cpuInterval = setInterval(() => runTagCpuTurn(), 1000);
-                
-                renderTouchAndGoGame();
-             });
+            if (localRoomData.hostId !== currentUser.id) return;
+             const gameData = {
+                ...localRoomData.gameData,
+                status: 'playing',
+                timer: 60,
+                tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+             };
+             updateFirestore({ gameData });
         }
         function populateTagLegend() {
             const posLegend = document.getElementById('tag-positive-legend');
@@ -2380,105 +2132,88 @@
             negLegend.innerHTML = TAG_ITEMS.negative.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
         }
         function updateTouchAndGoGame(source) {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            if(source === 'timer') gameData.timer--;
-
-            if (gameData.timer <= 0) {
-                endTouchAndGoGame();
-            } else {
-                 renderTouchAndGoGame();
+            if(source === 'timer') {
+                const newTimer = gameData.timer - 1;
+                if (newTimer <= 0) {
+                    endTouchAndGoGame();
+                } else {
+                    updateFirestore({ 'gameData.timer': newTimer });
+                }
             }
         }
         function spawnTagItem() {
-            const isPositive = Math.random() > 0.3; // 70% chance of positive
+            // Questa funzione ora è solo per l'host
+            if (localRoomData.hostId !== currentUser.id) return;
+
+            const isPositive = Math.random() > 0.3;
             const itemType = isPositive ? 'positive' : 'negative';
             const itemData = TAG_ITEMS[itemType][Math.floor(Math.random() * TAG_ITEMS[itemType].length)];
             
-            const itemEl = document.createElement('img');
-            itemEl.src = itemData.url;
-            itemEl.className = `tag-item ${itemType}`;
-            itemEl.dataset.score = itemData.score;
+            const newItem = {
+                id: `item_${Date.now()}_${Math.random()}`,
+                ...itemData,
+                x: Math.random() * 90,
+                y: Math.random() * 90
+            };
             
-            const arena = document.getElementById('tag-arena');
-            const arenaRect = arena.getBoundingClientRect();
-            itemEl.style.left = `${Math.random() * (arenaRect.width - 65)}px`;
-            itemEl.style.top = `${Math.random() * (arenaRect.height - 65)}px`;
-
-            itemEl.addEventListener('click', handleTagItemClick);
-            arena.appendChild(itemEl);
-            
-            setTimeout(() => {
-                if(itemEl.parentElement) itemEl.remove();
-            }, 4000 + Math.random() * 2000); // Remove after 4-6 seconds
-        }
-        function handleTagItemClick(e) {
-            const itemEl = e.target;
-            const score = parseInt(itemEl.dataset.score);
-            const player = localRoomData.players.find(p => p.id === currentUser.id);
-            
-            if (player) {
-                localRoomData.gameData.tempScores[player.id] += score;
-                if(score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('C5', '8n');
-                if(score < 0 && badTapSound) badTapSound.triggerAttackRelease('C3', '8n');
-            }
-            
-            itemEl.classList.add('popped');
-            setTimeout(() => itemEl.remove(), 300);
-            updateTouchAndGoGame('click');
-        }
-        function runTagCpuTurn() {
-            const arena = document.getElementById('tag-arena');
-            const availableItems = Array.from(arena.querySelectorAll('.tag-item:not(.popped)'));
-            if (availableItems.length === 0) return;
-
-            localRoomData.players.forEach(p => {
-                if (p.isCPU) {
-                    const hitChance = 0.4 + (localRoomData.cpuDifficulty * 0.1); // 50% to 80% chance to act
-                    if (Math.random() < hitChance) {
-                        let targetItem;
-                        const positiveItems = availableItems.filter(item => item.classList.contains('positive'));
-                        
-                        const smartChance = 0.5 + (localRoomData.cpuDifficulty * 0.12); // 62% to 98% chance to be smart
-
-                        if (Math.random() < smartChance && positiveItems.length > 0) {
-                            targetItem = positiveItems[Math.floor(Math.random() * positiveItems.length)];
-                        } else {
-                            targetItem = availableItems[Math.floor(Math.random() * availableItems.length)];
-                        }
-                        
-                        if (targetItem) {
-                            const score = parseInt(targetItem.dataset.score);
-                            localRoomData.gameData.tempScores[p.id] += score;
-                            if (score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('E5', '16n');
-                            if (score < 0 && badTapSound) badTapSound.triggerAttackRelease('E3', '16n');
-
-                            targetItem.classList.add('popped');
-                            setTimeout(() => {
-                                if (targetItem.parentElement) targetItem.remove();
-                            }, 300);
-                        }
-                    }
-                }
+            updateFirestore({
+                'gameData.items': firebase.firestore.FieldValue.arrayUnion(newItem)
             });
-            updateTouchAndGoGame('cpu');
+
+            setTimeout(() => {
+                updateFirestore({
+                    'gameData.items': firebase.firestore.FieldValue.arrayRemove(newItem)
+                });
+            }, 4000 + Math.random() * 2000);
+        }
+        function handleTagItemClick(itemId) {
+            const gameData = localRoomData.gameData;
+            const item = gameData.items.find(i => i.id === itemId);
+            if (!item) return;
+
+            const score = item.score;
+            const newTempScores = { ...gameData.tempScores };
+            newTempScores[currentUser.id] = (newTempScores[currentUser.id] || 0) + score;
+
+            if(score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('C5', '8n');
+            if(score < 0 && badTapSound) badTapSound.triggerAttackRelease('C3', '8n');
+            
+            const newItems = gameData.items.filter(i => i.id !== itemId);
+            updateFirestore({ 
+                'gameData.tempScores': newTempScores,
+                'gameData.items': newItems
+            });
         }
         function renderTouchAndGoGame() {
             const gameData = localRoomData.gameData;
             if (!gameData) return;
-            document.getElementById('tag-timer').textContent = `00:${String(gameData.timer).padStart(2, '0')}`;
+            document.getElementById('tag-timer').textContent = `00:${String(gameData.timer || 0).padStart(2, '0')}`;
             const userScore = gameData.tempScores[currentUser.id] || 0;
             document.getElementById('tag-player-score').textContent = userScore;
             
+            const arena = document.getElementById('tag-arena');
+            arena.innerHTML = '';
+            if (gameData.items) {
+                gameData.items.forEach(item => {
+                    const itemEl = document.createElement('img');
+                    itemEl.src = item.url;
+                    itemEl.className = `tag-item ${item.score > 0 ? 'positive' : 'negative'}`;
+                    itemEl.style.left = `${item.x}%`;
+                    itemEl.style.top = `${item.y}%`;
+                    itemEl.onclick = () => handleTagItemClick(item.id);
+                    arena.appendChild(itemEl);
+                });
+            }
+
             const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
             updateLeaderboard(document.getElementById('tag-leaderboard'), tempScorePlayers);
         }
         function endTouchAndGoGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            clearInterval(gameData.gameTimer);
-            clearInterval(gameData.spawnInterval);
-            clearInterval(gameData.cpuInterval);
-            document.getElementById('tag-arena').innerHTML = ''; // Clear arena
-
+            
             const sortedPlayers = [...localRoomData.players].sort((a,b) => (gameData.tempScores[b.id] || 0) - (gameData.tempScores[a.id] || 0));
 
             if (localRoomData.gameMode === 'championship') {
@@ -2486,75 +2221,45 @@
             } else {
                 localRoomData.players.forEach(p => p.score = gameData.tempScores[p.id] || 0);
             }
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            renderAll();
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
 
         // --- LOGICA PORTA DELLA MORTE ---
         const DOOR_COLORS = ["bg-red-800", "bg-blue-800", "bg-green-800", "bg-yellow-800", "bg-purple-800", "bg-pink-800", "bg-indigo-800", "bg-teal-800", "bg-gray-800", "bg-orange-800", "bg-lime-800", "bg-cyan-800", "bg-fuchsia-800", "bg-rose-800"];
         
         function initializeDeathDoorGame() {
-            localRoomData.gameData = {
+            if (localRoomData.hostId !== currentUser.id) return;
+            const gameData = {
                 type: 'death-door', status: 'intro', round: 0,
                 activePlayerIds: localRoomData.players.map(p => p.id),
                 eliminatedPlayerIds: [], doors: [], choices: {}, timer: 15,
-                roundTimerId: null, revealTimeoutId: null
             };
-            const introOverlay = document.getElementById('dd-intro-overlay');
-            introOverlay.classList.remove('hidden');
-            setTimeout(() => introOverlay.style.opacity = '1', 10);
+            updateFirestore({ gameData });
         }
         function startDeathDoorRound() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            if (gameData.status === 'intro') {
-                hideIntroOverlay('dd-intro-overlay');
-            }
             
-            gameData.round++;
-            gameData.status = 'choosing';
-            gameData.choices = {};
-            gameData.timer = 15;
-            isActionLocked = false;
+            const newRoundData = {
+                ...gameData,
+                round: gameData.round + 1,
+                status: 'choosing',
+                choices: {},
+                timer: 15,
+                doors: []
+            };
 
             const numDoors = gameData.activePlayerIds.length;
             const cursedDoorIndex = Math.floor(Math.random() * numDoors);
-            gameData.doors = [];
-            
             const shuffledColors = [...DOOR_COLORS].sort(() => 0.5 - Math.random());
             for (let i = 0; i < numDoors; i++) {
-                gameData.doors.push({
+                newRoundData.doors.push({
                     id: i, isCursed: i === cursedDoorIndex, isOpen: false,
                     chosenBy: null, color: shuffledColors[i]
                 });
             }
-
-            if (gameData.roundTimerId) clearInterval(gameData.roundTimerId);
-            gameData.roundTimerId = setInterval(updateDeathDoorTimer, 1000);
-            
-            localRoomData.players.forEach(p => {
-                if (p.isCPU && gameData.activePlayerIds.includes(p.id)) {
-                    runDeathDoorCpuTurn(p.id);
-                }
-            });
-
-            renderDeathDoorGame();
-        }
-        function updateDeathDoorTimer() {
-            const gameData = localRoomData.gameData;
-            if (!gameData || gameData.status !== 'choosing') {
-                clearInterval(gameData.roundTimerId); return;
-            }
-            gameData.timer--;
-            document.getElementById('dd-timer').textContent = gameData.timer;
-
-            if (gameData.timer <= 5 && heartbeatSound) heartbeatSound.triggerAttackRelease("C2", "8n");
-
-            if (gameData.timer <= 0) {
-                clearInterval(gameData.roundTimerId);
-                const playersWhoDidntChoose = gameData.activePlayerIds.filter(id => gameData.choices[id] === undefined);
-                playersWhoDidntChoose.forEach(playerId => eliminatePlayer(playerId, 'timeout'));
-                startRevealPhase();
-            }
+            updateFirestore({ gameData: newRoundData });
         }
         function handleDoorClick(doorId) {
             const gameData = localRoomData.gameData;
@@ -2565,73 +2270,8 @@
                 showModal("Questa porta è già stata scelta!"); return;
             }
             
-            gameData.choices[currentUser.id] = doorId;
-            door.chosenBy = currentUser.id;
-            
-            renderDeathDoorGame();
-            checkAllPlayersChosen();
-        }
-        function runDeathDoorCpuTurn(cpuId) {
-            const gameData = localRoomData.gameData;
-            const delay = 3000 + Math.random() * 7000;
-            
-            setTimeout(() => {
-                if (gameData.status !== 'choosing') return;
-                const availableDoors = gameData.doors.filter(d => d.chosenBy === null);
-                if (availableDoors.length > 0) {
-                    const chosenDoor = availableDoors[Math.floor(Math.random() * availableDoors.length)];
-                    gameData.choices[cpuId] = chosenDoor.id;
-                    chosenDoor.chosenBy = cpuId;
-                    renderDeathDoorGame();
-                    checkAllPlayersChosen();
-                }
-            }, delay);
-        }
-        function checkAllPlayersChosen() {
-            const gameData = localRoomData.gameData;
-            const allChosen = gameData.activePlayerIds.every(id => gameData.choices[id] !== undefined);
-            if (allChosen) {
-                clearInterval(gameData.roundTimerId);
-                startRevealPhase();
-            }
-        }
-        function startRevealPhase() {
-            const gameData = localRoomData.gameData;
-            if (gameData.status === 'revealing') return;
-            gameData.status = 'revealing';
             isActionLocked = true;
-            renderDeathDoorGame();
-
-            const doorsInOrder = [...gameData.doors].sort((a,b) => a.isCursed - b.isCursed);
-            let revealIndex = 0;
-
-            function revealNextDoor() {
-                if (revealIndex >= doorsInOrder.length) {
-                    setTimeout(endDeathDoorRound, 2000); return;
-                }
-                const door = doorsInOrder[revealIndex];
-                if (door) {
-                    door.isOpen = true;
-                    if (door.isCursed) {
-                        if(deathDoorSound) deathDoorSound.triggerAttackRelease("1n");
-                        if (door.chosenBy) eliminatePlayer(door.chosenBy, 'cursed');
-                    } else {
-                        if(safeDoorSound) safeDoorSound.triggerAttackRelease("C4", "2n");
-                    }
-                    renderDeathDoorGame();
-                }
-                revealIndex++;
-                gameData.revealTimeoutId = setTimeout(revealNextDoor, 1500);
-            }
-            setTimeout(revealNextDoor, 1000);
-        }
-        function eliminatePlayer(playerId, reason) {
-            const gameData = localRoomData.gameData;
-            const playerIndex = gameData.activePlayerIds.indexOf(playerId);
-            if (playerIndex > -1 && !gameData.eliminatedPlayerIds.includes(playerId)) {
-                gameData.activePlayerIds.splice(playerIndex, 1);
-                gameData.eliminatedPlayerIds.push(playerId);
-            }
+            updateFirestore({ [`gameData.choices.${currentUser.id}`]: doorId });
         }
         function renderDeathDoorGame() {
             const gameData = localRoomData.gameData;
@@ -2654,23 +2294,25 @@
                 default: statusText.textContent = "";
             }
 
-            gameData.doors.forEach((door) => {
-                const doorEl = document.createElement('div');
-                doorEl.className = 'dd-door w-24 h-36 sm:w-28 sm:h-44';
-                if (door.isOpen) doorEl.classList.add('open');
-                if (door.chosenBy === currentUser.id && !door.isOpen) doorEl.classList.add('selected');
-                
-                doorEl.innerHTML = `
-                    <div class="dd-door-inner">
-                        <div class="dd-door-front ${door.color}"><span>?</span></div>
-                        <div class="dd-door-back ${door.isCursed ? 'cursed' : 'safe'}">${door.isCursed ? '💀' : '✔️'}</div>
-                    </div>`;
-                
-                if (gameData.status === 'choosing' && !door.chosenBy) {
-                    doorEl.onclick = () => handleDoorClick(door.id);
-                }
-                doorsArea.appendChild(doorEl);
-            });
+            if (gameData.doors) {
+                gameData.doors.forEach((door) => {
+                    const doorEl = document.createElement('div');
+                    doorEl.className = 'dd-door w-24 h-36 sm:w-28 sm:h-44';
+                    if (door.isOpen) doorEl.classList.add('open');
+                    if (door.chosenBy === currentUser.id && !door.isOpen) doorEl.classList.add('selected');
+                    
+                    doorEl.innerHTML = `
+                        <div class="dd-door-inner">
+                            <div class="dd-door-front ${door.color}"><span>?</span></div>
+                            <div class="dd-door-back ${door.isCursed ? 'cursed' : 'safe'}">${door.isCursed ? '💀' : '✔️'}</div>
+                        </div>`;
+                    
+                    if (gameData.status === 'choosing' && !door.chosenBy) {
+                        doorEl.onclick = () => handleDoorClick(door.id);
+                    }
+                    doorsArea.appendChild(doorEl);
+                });
+            }
 
             const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
             activePlayers.forEach((player, index) => {
@@ -2715,22 +2357,10 @@
                 }
             });
         }
-        function endDeathDoorRound() {
-            const gameData = localRoomData.gameData;
-            isActionLocked = false;
-            
-            if (gameData.activePlayerIds.length <= 1) {
-                endDeathDoorGame();
-            } else {
-                gameData.status = 'round-end-transition';
-                setTimeout(startDeathDoorRound, 3000);
-            }
-        }
         function endDeathDoorGame() {
+            if (localRoomData.hostId !== currentUser.id) return;
             const gameData = localRoomData.gameData;
-            if (gameData.roundTimerId) clearInterval(gameData.roundTimerId);
-            if (gameData.revealTimeoutId) clearTimeout(gameData.revealTimeoutId);
-
+            
             const winnerId = gameData.activePlayerIds[0];
             
             if (localRoomData.gameMode === 'championship') {
@@ -2745,8 +2375,8 @@
                 });
             }
 
-            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            renderAll();
+            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            updateFirestore({ gameState: newState, players: localRoomData.players });
         }
 
         // --- FUNZIONI DI FINE GIOCO E UTILITY ---
@@ -2817,16 +2447,19 @@
         }
         
         function advanceChampionship() {
-            localRoomData.currentRound++;
-            if (localRoomData.currentRound > localRoomData.championshipRounds) {
-                localRoomData.gameState = 'championship-finished';
+            if (localRoomData.hostId !== currentUser.id) return;
+            const nextRound = localRoomData.currentRound + 1;
+            if (nextRound > localRoomData.championshipRounds) {
+                updateFirestore({ gameState: 'championship-finished' });
             } else {
-                localRoomData.gameState = 'in-game';
-                localRoomData.gameData = null;
-                localRoomData.currentGame = localRoomData.gameSequence[localRoomData.currentRound - 1] || 'memory';
-                localRoomData.currentPlayerIndex = Math.floor(Math.random() * localRoomData.players.length);
+                updateFirestore({ 
+                    gameState: 'in-game',
+                    currentRound: nextRound,
+                    gameData: null,
+                    currentGame: localRoomData.gameSequence[nextRound - 1] || 'memory',
+                    currentPlayerIndex: Math.floor(Math.random() * localRoomData.players.length)
+                });
             }
-            renderAll();
         }
 
         function updateLeaderboard(leaderboardElement, players, currentPlayerId = null) {
