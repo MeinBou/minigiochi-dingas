@@ -1,0 +1,2839 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minigiochi Dingas (Offline)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #1e3a8a, #312e81);
+        }
+        .card-container {
+            perspective: 1000px;
+        }
+        .card {
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s, opacity 0.5s;
+            width: 100%;
+            height: 100%;
+        }
+        .card.flipped {
+            transform: rotateY(180deg);
+        }
+        .card.matched {
+            transform: rotateY(180deg) scale(0);
+            opacity: 0;
+        }
+        .card .front, .card .back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .card .front {
+            transform: rotateY(180deg);
+            font-size: 2.5rem; /* Aumentato per emoji più grandi */
+        }
+        .shake {
+            animation: shake 0.5s;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .modal-backdrop {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .rps-choice-btn {
+            transition: all 0.2s ease-in-out;
+            font-size: 2.5rem;
+        }
+        .rps-choice-btn:hover {
+            transform: scale(1.1);
+            filter: brightness(1.1);
+        }
+        .rps-choice-btn.selected {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.8);
+            border-color: #0ea5e9;
+        }
+        .panel {
+            background-color: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .btn-primary {
+            background-image: linear-gradient(to right, #22d3ee, #0ea5e9);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px 0 rgba(45, 156, 219, 0.4);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(45, 156, 219, 0.5);
+        }
+        .btn-secondary {
+            background-image: linear-gradient(to right, #4ade80, #22c55e);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px 0 rgba(74, 222, 128, 0.4);
+        }
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(74, 222, 128, 0.5);
+        }
+        .btn-accent {
+            background-image: linear-gradient(to right, #a855f7, #9333ea);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px 0 rgba(168, 85, 247, 0.4);
+        }
+        .btn-accent:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(168, 85, 247, 0.5);
+        }
+        .btn-danger {
+            background-image: linear-gradient(to right, #f87171, #ef4444);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px 0 rgba(248, 113, 113, 0.4);
+        }
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(248, 113, 113, 0.5);
+        }
+        .btn-warning {
+            background-image: linear-gradient(to right, #fbbf24, #f59e0b);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px 0 rgba(251, 191, 36, 0.4);
+        }
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(251, 191, 36, 0.5);
+        }
+        .btn-info {
+            background-image: linear-gradient(to right, #60a5fa, #3b82f6);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px 0 rgba(96, 165, 250, 0.4);
+        }
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(96, 165, 250, 0.5);
+        }
+
+        /* Stili Roster */
+        .character-card {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            border: 2px solid transparent;
+            position: relative;
+        }
+        .character-card:hover:not(.taken) {
+            transform: scale(1.05);
+            border-color: #fef08a;
+        }
+        .character-card.selected {
+            transform: scale(1.05);
+            border-color: #facc15;
+            box-shadow: 0 0 20px #facc15;
+        }
+        .character-card.taken {
+            cursor: not-allowed;
+            filter: grayscale(80%) brightness(0.5);
+        }
+        .character-card .taken-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        .character-card .taken-overlay img {
+            width: 50%; height: 50%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .character-card img.main-img {
+            object-fit: cover;
+            object-position: top;
+        }
+
+        /* Stili Icona Misteriosa */
+        #hns-arena {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            height: 500px;
+            margin: auto;
+            background: linear-gradient(to top, #166534 50%, #0ea5e9 50%);
+            border-radius: 1rem;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .hns-icon {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 4px solid white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .hns-icon.hiding-spot:hover {
+            transform: scale(1.1) rotate(5deg);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+        }
+        .hns-icon.selected-spot {
+            border-color: #facc15;
+            box-shadow: 0 0 20px #facc15;
+            transform: scale(1.1);
+        }
+        .hns-icon.disappeared {
+            animation: disappear 0.5s forwards ease-in-out;
+        }
+        @keyframes disappear {
+            0% { transform: scale(1) rotate(0); opacity: 1; }
+            100% { transform: scale(0) rotate(90deg); opacity: 0; }
+        }
+        .hns-player-avatar {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            transition: all 0.3s ease-in-out;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .hns-player-avatar.revealed {
+            animation: reveal 0.8s forwards;
+        }
+        @keyframes reveal {
+            0% { transform: scale(0) rotate(-180deg); opacity: 0; }
+            60% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        #hns-captured-area {
+            background-color: rgba(239, 68, 68, 0.3);
+            border: 2px dashed rgba(239, 68, 68, 0.7);
+        }
+
+        /* Stili Tocco al Volo */
+        #tag-game-container {
+            display: flex;
+            gap: 1rem;
+        }
+        #tag-arena {
+            flex-grow: 1;
+            height: 600px;
+            background: radial-gradient(circle, #86198f, #4a044e);
+            border-radius: 1rem;
+            position: relative;
+            overflow: hidden;
+            cursor: crosshair;
+            box-shadow: inset 0 0 30px #000;
+        }
+        .tag-item {
+            position: absolute;
+            width: 65px;
+            height: 65px;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+            filter: drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));
+        }
+        .tag-item.popped {
+            animation: burst-out 0.3s ease-out forwards;
+        }
+        .tag-item.positive { animation: slow-rotate 15s linear infinite, float 8s ease-in-out infinite alternate; }
+        .tag-item.negative { animation: nervous-shake 0.5s linear infinite, float 6s ease-in-out infinite alternate; }
+        .tag-item.pulsing-heart { animation-name: slow-rotate, float, pulse; }
+        
+        @keyframes slow-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes nervous-shake { 0%, 100% { transform: translate(0, 0) rotate(0); } 25% { transform: translate(2px, -2px) rotate(3deg); } 50% { transform: translate(-2px, 2px) rotate(-3deg); } 75% { transform: translate(2px, 2px) rotate(2deg); } }
+        @keyframes float { from { transform: translateY(-10px); } to { transform: translateY(10px); } }
+        @keyframes burst-out {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* Stili Porta della Morte */
+        .intro-overlay {
+            background-color: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px);
+            transition: opacity 0.5s ease-in-out;
+        }
+        .dd-door {
+            perspective: 1000px;
+            cursor: pointer;
+            transition: all 0.4s ease;
+        }
+        .dd-door-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.8s;
+            transform-style: preserve-3d;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .dd-door.open .dd-door-inner {
+            transform: rotateY(180deg);
+        }
+        .dd-door-front, .dd-door-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 0.75rem;
+        }
+        .dd-door-front {
+            border: 4px solid #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: 900;
+            color: rgba(255,255,255,0.5);
+            text-shadow: 0 0 10px black;
+            animation: shimmer 5s infinite linear;
+        }
+        @keyframes shimmer {
+            0%, 100% { box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+            50% { box-shadow: 0 0 30px rgba(255,255,255,0.3); }
+        }
+        .dd-door-back {
+            transform: rotateY(180deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+        }
+        .dd-door.selected:not(.open) {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px #facc15;
+        }
+        .dd-door-back.safe {
+            background: radial-gradient(circle, #67e8f9, #0e7490);
+            box-shadow: inset 0 0 40px #a5f3fc;
+            animation: safe-glow 2s infinite alternate;
+        }
+        @keyframes safe-glow {
+            from { opacity: 0.8; } to { opacity: 1; }
+        }
+        .dd-door-back.cursed {
+            background: radial-gradient(circle, #b91c1c, #450a0a);
+            animation: cursed-pulse 1s infinite;
+        }
+        @keyframes cursed-pulse {
+            0%, 100% { box-shadow: inset 0 0 20px #fca5a5; }
+            50% { box-shadow: inset 0 0 40px #ef4444; }
+        }
+        .dd-player-avatar {
+            position: absolute;
+            text-align: center;
+            transition: top 0.5s ease, left 0.5s ease, transform 0.5s ease;
+            z-index: 5;
+        }
+        .dd-player-avatar.eliminated {
+            animation: player-eliminated 1.5s forwards ease-in;
+        }
+        @keyframes player-eliminated {
+            0% { transform: scale(1) translateX(-50%); opacity: 1; }
+            50% { transform: scale(1.2) rotate(15deg) translateX(-50%); opacity: 1; }
+            100% { transform: scale(0) translateY(100px) rotate(360deg) translateX(-50%); opacity: 0; }
+        }
+        #dd-eliminated-area {
+            background-color: rgba(127, 29, 29, 0.3);
+            border: 2px dashed rgba(220, 38, 38, 0.7);
+        }
+        /* Stili Succofono */
+        #succofono-players-area .player-container {
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #succofono-players-area .player-container.eliminated {
+            transform: scale(0.8);
+            opacity: 0.4;
+            filter: grayscale(1);
+        }
+        .juice-glass {
+            width: 60px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        .juice-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            transition: height 0.1s linear;
+        }
+        .traffic-light {
+            width: 80px; height: 80px; border-radius: 50%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            transition: all 0.3s;
+        }
+        .traffic-light.red { background-color: #ef4444; box-shadow: 0 0 25px #ef4444; }
+        .traffic-light.green { background-color: #22c55e; box-shadow: 0 0 25px #22c55e; }
+        
+        /* Stili Bomba */
+        #bomb-players-circle {
+            position: relative;
+            width: 450px;
+            height: 450px;
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 50%;
+            margin: 2rem auto;
+        }
+        .bomb-player {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .bomb-player.eliminated {
+            opacity: 0.3;
+            filter: grayscale(100%);
+            transform: translate(-50%, -50%) scale(0.8);
+        }
+        .bomb-player.has-bomb {
+            transform: translate(-50%, -50%) scale(1.15);
+            filter: drop-shadow(0 0 15px #f87171);
+        }
+        #pass-bomb-btn.shaking {
+            animation: shake 0.3s infinite;
+        }
+
+        /* Stili Dado Fortunato (NUOVO) */
+        .dice-number {
+            transition: all 0.3s ease;
+            background-color: rgba(0,0,0,0.3);
+            border: 2px solid #4b5563;
+        }
+        .dice-number.collected {
+            background-color: #facc15;
+            color: #422006;
+            border-color: #fde047;
+            animation: collected-sparkle 0.5s ease-out;
+        }
+        @keyframes collected-sparkle {
+            0% { transform: scale(1); box-shadow: 0 0 0px #fde047; }
+            50% { transform: scale(1.2); box-shadow: 0 0 20px #fde047; }
+            100% { transform: scale(1); box-shadow: 0 0 0px #fde047; }
+        }
+        .player-dice-display {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .player-dice-display.rolling {
+            transform: scale(1.2) rotate(360deg);
+        }
+    </style>
+</head>
+<body class="text-white flex items-center justify-center min-h-screen p-2 sm:p-4">
+
+    <div id="game-container" class="w-full max-w-6xl mx-auto">
+
+        <!-- Schermata Nickname -->
+        <div id="nickname-screen" class="text-center panel p-8 rounded-xl">
+            <h1 class="text-4xl font-bold mb-2 text-cyan-300">Benvenuto a Minigiochi Dingas!</h1>
+            <p class="text-slate-300 mb-6">Scegli il tuo nickname per iniziare.</p>
+            <input type="text" id="nickname-input" placeholder="Il tuo nickname..." class="w-full max-w-sm mx-auto bg-slate-700 text-white p-3 rounded-lg border-2 border-slate-600 focus:border-cyan-400 focus:outline-none">
+            <button id="join-lobby-btn" class="mt-4 w-full max-w-sm mx-auto btn-primary text-white font-bold py-3 px-4 rounded-lg">Entra nella Lobby</button>
+        </div>
+
+        <!-- Schermata Selezione Personaggio -->
+        <div id="character-selection-screen" class="hidden text-center panel p-8 rounded-xl">
+            <h2 class="text-3xl font-bold mb-2 text-cyan-300">Scegliete i Personaggi!</h2>
+            <p id="character-selection-status" class="text-slate-400 mb-6">Tutti i giocatori devono scegliere un personaggio.</p>
+            <div id="roster-grid" class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-4 mb-6 max-h-[60vh] overflow-y-auto p-2"></div>
+            <button id="confirm-character-btn" class="btn-secondary text-white font-bold py-3 px-6 rounded-lg disabled:bg-slate-600 disabled:cursor-not-allowed" disabled>Conferma Scelta</button>
+        </div>
+
+        <!-- Schermata Lobby -->
+        <div id="lobby-screen" class="hidden text-center panel p-8 rounded-xl">
+            <h2 class="text-3xl font-bold mb-6 text-cyan-300">Lobby</h2>
+            <div class="flex flex-col md:flex-row gap-4 justify-center">
+                <button id="create-room-btn" class="btn-secondary text-white font-bold py-3 px-6 rounded-lg flex-1">Crea Stanza</button>
+                <div class="flex-1">
+                    <input type="text" id="join-code-input" placeholder="Codice stanza..." class="w-full bg-slate-700 text-white p-3 rounded-lg border-2 border-slate-600 focus:border-green-400 focus:outline-none" disabled>
+                    <button id="join-room-btn" class="mt-2 w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg disabled:bg-slate-600 disabled:cursor-not-allowed" disabled>Unisciti (Disabilitato)</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Schermata Creazione Stanza -->
+        <div id="create-room-screen" class="hidden text-center panel p-8 rounded-xl">
+            <h2 class="text-3xl font-bold mb-4 text-cyan-300">Configura la Stanza</h2>
+            <div class="mb-6">
+                <label for="player-count-slider" class="block mb-2 text-slate-300">Numero massimo di giocatori: <span id="player-count-value" class="font-bold text-cyan-300">8</span></label>
+                <input id="player-count-slider" type="range" min="2" max="14" value="8" class="w-full max-w-sm mx-auto">
+            </div>
+             <div class="mb-6">
+                <label for="cpu-difficulty-slider" class="block mb-2 text-slate-300">Difficoltà CPU: <span id="cpu-difficulty-value" class="font-bold text-cyan-300">1</span></label>
+                <input id="cpu-difficulty-slider" type="range" min="1" max="4" value="1" class="w-full max-w-sm mx-auto">
+            </div>
+            <div class="mb-6">
+                <label for="rounds-count-slider" class="block mb-2 text-slate-300">Round Campionato: <span id="rounds-count-value" class="font-bold text-cyan-300">4</span></label>
+                <input id="rounds-count-slider" type="range" min="4" max="8" value="4" class="w-full max-w-sm mx-auto">
+            </div>
+            <button id="confirm-create-room-btn" class="btn-secondary text-white font-bold py-3 px-6 rounded-lg">Conferma e Crea</button>
+        </div>
+
+        <!-- Schermata Attesa in Stanza -->
+        <div id="room-wait-screen" class="hidden panel p-8 rounded-xl">
+            <h2 class="text-3xl font-bold mb-2 text-cyan-300">Sala d'attesa</h2>
+            <div class="mb-4 text-center">
+                <p class="text-slate-400">Codice stanza (solo per test):</p>
+                <div class="bg-slate-900 p-3 rounded-lg mt-2 inline-block">
+                    <span id="room-code-display" class="text-2xl font-mono tracking-widest text-green-400"></span>
+                </div>
+            </div>
+            <h3 class="text-xl font-bold mb-4 text-center">Giocatori (<span id="current-players">1</span>/<span id="max-players">8</span>)</h3>
+            <div id="player-list" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+            <div id="host-controls" class="text-center">
+                <button id="add-cpu-btn" class="btn-accent text-white font-bold py-2 px-4 rounded-lg mb-4">Aggiungi CPU</button>
+                <button id="start-game-btn" class="btn-primary text-white font-bold py-3 px-6 rounded-lg text-xl disabled:bg-slate-600 disabled:cursor-not-allowed" disabled>Inizia Partita</button>
+            </div>
+        </div>
+        
+        <!-- Schermata Voto Modalità -->
+        <div id="game-mode-vote-screen" class="hidden text-center panel p-8 rounded-xl">
+            <h2 class="text-3xl font-bold mb-6 text-cyan-300">Scegli la modalità di gioco</h2>
+            <p class="text-slate-400 mb-6">La modalità con più voti verrà scelta.</p>
+            <div id="vote-options" class="flex flex-col md:flex-row gap-4 justify-center">
+                 <button data-vote="free-play" class="vote-btn btn-secondary text-white font-bold py-4 px-6 rounded-lg flex-1">Partita Libera</button>
+                 <button data-vote="championship" class="vote-btn btn-accent text-white font-bold py-4 px-6 rounded-lg flex-1">Campionato</button>
+            </div>
+            <p id="vote-feedback" class="mt-4 text-slate-300 h-5"></p>
+        </div>
+
+        <!-- Schermata Gioco Memory -->
+        <div id="memory-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+            <div id="memory-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-cyan-400" style="text-shadow: 0 0 15px #22d3ee;">Memory</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🧠</span><span>Trova le <b>coppie di carte uguali</b> per guadagnare punti.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🔄</span><span>Se trovi una coppia, ottieni <b>un altro turno</b>.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🏆</span><span>Chi trova più coppie vince il round!</span></div>
+                </div>
+                <button id="memory-start-btn" class="btn-primary font-bold py-3 px-8 rounded-lg text-xl mt-8">Inizia!</button>
+            </div>
+             <div class="flex flex-col lg:flex-row gap-4">
+                <div class="lg:w-1/4 panel p-4 rounded-xl order-2 lg:order-1 h-fit">
+                    <h3 id="leaderboard-title" class="text-2xl font-bold mb-4 text-center text-cyan-300">Classifica</h3>
+                    <div id="leaderboard" class="space-y-3"></div>
+                </div>
+                <div class="lg:w-3/4 order-1 lg:order-2">
+                    <div id="game-info" class="text-center mb-4 p-3 panel rounded-xl">
+                        <p id="game-mode-display" class="text-lg font-semibold text-purple-400"></p>
+                        <p id="turn-indicator" class="text-xl">Turno di: <span id="current-player-turn" class="font-bold text-cyan-300"></span></p>
+                    </div>
+                    <div id="memory-board" class="grid gap-1 sm:gap-2 justify-center"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schermata Gioco Morra Cinese -->
+        <div id="rps-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+            <div id="rps-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-sky-400" style="text-shadow: 0 0 15px #38bdf8;">Morra Cinese</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">✊✋✌️</span><span>Sfida gli avversari in un torneo di Sasso, Carta, Forbice.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🎯</span><span>Fai la tua scelta per battere l'avversario di turno.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🏅</span><span>Ogni vittoria ti dà punti. Chi ne accumula di più, vince!</span></div>
+                </div>
+                <button id="rps-start-btn" class="btn-info font-bold py-3 px-8 rounded-lg text-xl mt-8">Combatti!</button>
+            </div>
+            <div class="flex flex-col lg:flex-row gap-4">
+                <div class="lg:w-1/4 panel p-4 rounded-xl order-2 lg:order-1 h-fit">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-cyan-300">Classifica</h3>
+                    <div id="rps-leaderboard" class="space-y-3"></div>
+                </div>
+                <div class="lg:w-3/4 order-1 lg:order-2 panel p-6 rounded-xl">
+                    <h2 id="rps-title" class="text-3xl font-bold mb-4 text-center text-purple-400">Morra Cinese a Punti</h2>
+                    <div id="rps-matchup-area" class="text-center mb-6 min-h-[300px]"></div>
+                    <div id="rps-player-controls" class="text-center mb-6"></div>
+                    <div class="bg-slate-900/50 p-4 rounded-lg h-48 overflow-y-auto border border-slate-700">
+                        <h4 class="font-bold text-slate-400 mb-2">Log Eventi</h4>
+                        <div id="rps-log" class="text-sm space-y-2 text-slate-300"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Schermata Gioco Dado Fortunato (NUOVO LAYOUT) -->
+        <div id="lucky-dice-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+            <div id="lucky-dice-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-yellow-300" style="text-shadow: 0 0 15px #facc15;">Dado Fortunato</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🎲</span><span>Lancia il tuo dado ogni 3 secondi per ottenere i numeri che ti mancano.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🎯</span><span>Sii il primo a ottenere tutti i numeri da 1 a 6!</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">👑</span><span>Vince chi completa la serie per primo o chi ha il numero più alto allo scadere del tempo.</span></div>
+                </div>
+                <button id="lucky-dice-start-btn" class="btn-accent font-bold py-3 px-8 rounded-lg text-xl mt-8">Inizia!</button>
+            </div>
+            <div class="flex flex-col lg:flex-row gap-6">
+                <!-- Area di gioco principale -->
+                <div class="flex-grow flex flex-col">
+                    <div class="text-center mb-4">
+                        <h2 class="text-3xl font-bold text-yellow-300">Dado Fortunato</h2>
+                        <div id="lucky-dice-main-timer" class="text-4xl font-bold text-white bg-black/20 rounded-lg px-4 py-2 inline-block mt-2">03:00</div>
+                    </div>
+                    <div id="lucky-dice-players-area" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                        <!-- Schede giocatori generate da JS -->
+                    </div>
+                </div>
+                <!-- Classifica Live -->
+                <div class="lg:w-1/3 flex-shrink-0 panel p-4 rounded-xl">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-cyan-300">Classifica Live</h3>
+                    <div id="lucky-dice-leaderboard" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Schermata Gioco Bomba -->
+        <div id="bomb-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+             <div id="bomb-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-red-400" style="text-shadow: 0 0 15px #ef4444;">Bomba</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">💣</span><span>Passa la bomba al giocatore successivo prima che esploda!</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">💥</span><span>Il timer è casuale. Se esplode su di te, sei eliminato.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🏆</span><span>Sopravvivi più a lungo degli altri per vincere.</span></div>
+                </div>
+                <button id="bomb-start-btn" class="btn-danger font-bold py-3 px-8 rounded-lg text-xl mt-8">Inizia!</button>
+            </div>
+            <div class="flex flex-col items-center">
+                <h2 id="bomb-title" class="text-3xl font-bold text-red-400 mb-4">Bomba</h2>
+                <div id="bomb-game-area" class="relative">
+                    <div id="bomb-players-circle"></div>
+                </div>
+                 <button id="pass-bomb-btn" class="btn-danger text-white font-bold py-4 px-6 rounded-lg text-2xl mt-8" disabled>Passa la Bomba!</button>
+                 <div id="bomb-eliminated-area" class="mt-8 w-full max-w-2xl p-2 bg-slate-900/50 rounded-lg">
+                    <h4 class="text-center text-slate-400 font-bold mb-2">Eliminati</h4>
+                    <div id="bomb-eliminated-players" class="flex justify-center gap-2 flex-wrap min-h-[50px]"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schermata Gioco Succofono -->
+        <div id="succofono-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+            <div id="succofono-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-yellow-400" style="text-shadow: 0 0 15px #f59e0b;">Succofono</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl" style="color: #22c55e;">🟢</span><span>Quando la luce è <b>verde</b>, premi ripetutamente per riempire il bicchiere.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl" style="color: #ef4444;">🔴</span><span>Quando la luce è <b>rossa</b>, fermati! Premere svuoterà il bicchiere!</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🏆</span><span>Riempi il bicchiere prima degli altri per vincere.</span></div>
+                </div>
+                <button id="succofono-start-btn" class="btn-warning font-bold py-3 px-8 rounded-lg text-xl mt-8">Bevi!</button>
+            </div>
+             <div class="text-center mb-6">
+                <h2 class="text-3xl font-bold text-yellow-400">Succofono</h2>
+                <p id="succofono-subtitle" class="text-slate-300">Premi per riempire quando il semaforo è verde!</p>
+            </div>
+            <div class="flex items-center justify-center gap-8 mb-6">
+                 <div id="succofono-traffic-light" class="traffic-light red"></div>
+            </div>
+            <div id="succofono-players-area" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 items-end">
+            </div>
+             <div class="text-center mt-6">
+                <button id="drink-btn" class="btn-warning text-white font-bold py-4 px-8 rounded-lg text-2xl shadow-lg" disabled>Riempi!</button>
+            </div>
+        </div>
+
+        <!-- Schermata Gioco Icona Misteriosa -->
+        <div id="hide-and-seek-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+            <div id="hns-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-sky-300" style="text-shadow: 0 0 15px #38bdf8;">Icona Misteriosa</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🤫</span><span>Un giocatore è il <b>cercatore</b>, gli altri si <b>nascondono</b> dietro le icone.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🔎</span><span>Il cercatore deve trovare tutti i giocatori nascosti.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">🏆</span><span>Guadagni punti sia nascondendoti bene che trovando gli altri velocemente.</span></div>
+                </div>
+                <button id="hns-start-btn" class="btn-info font-bold py-3 px-8 rounded-lg text-xl mt-8">Gioca!</button>
+            </div>
+            <div class="text-center mb-4">
+                <h2 class="text-3xl font-bold text-sky-300">Icona Misteriosa</h2>
+                <p id="hns-status-text" class="text-slate-300 text-lg mt-1 h-8"></p>
+            </div>
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-grow">
+                    <div id="hns-arena">
+                        <!-- Le icone e i giocatori verranno aggiunti qui via JS -->
+                    </div>
+                </div>
+                <div class="md:w-1/4 flex-shrink-0 space-y-4">
+                    <div>
+                        <h3 class="text-xl font-bold text-cyan-300 mb-2">Classifica Round</h3>
+                        <div id="hns-leaderboard" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-red-400 mb-2">Catturati</h3>
+                        <div id="hns-captured-area" class="p-2 rounded-lg min-h-[100px] flex flex-wrap gap-2 items-start content-start">
+                            <!-- Giocatori catturati qui -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schermata Gioco Tocco al Volo -->
+        <div id="touch-and-go-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative">
+            <div id="tag-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6" style="color: #f5d442; text-shadow: 0 0 15px #f59e0b;">Tocco al Volo</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">✅</span><span>Tocca gli oggetti <b>positivi</b> (stelle, cuori) per guadagnare punti.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">❌</span><span><b>Evita</b> di toccare gli oggetti negativi, o perderai punti!</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">⚡️</span><span>Sii veloce e preciso per ottenere il punteggio più alto prima che scada il tempo.</span></div>
+                </div>
+                <button id="tag-start-btn" class="btn-warning font-bold py-3 px-8 rounded-lg text-xl mt-8">Inizia!</button>
+            </div>
+             <div class="text-center mb-4">
+                <h2 class="text-3xl font-bold" style="color: #f5d442;">Tocco al Volo</h2>
+                <p class="text-slate-300">Tocca gli oggetti positivi ed evita quelli negativi!</p>
+            </div>
+            <div id="tag-game-container">
+                <div class="w-1/4 flex-shrink-0 space-y-4">
+                    <div>
+                        <h3 class="text-xl font-bold text-cyan-300 mb-2">Il Tuo Punteggio</h3>
+                        <div id="tag-player-score" class="text-5xl font-bold text-white bg-black/20 rounded-lg p-4 text-center">0</div>
+                    </div>
+                     <div>
+                        <h3 class="text-xl font-bold text-purple-300 mb-2">Tempo</h3>
+                        <div id="tag-timer" class="text-4xl font-bold text-white bg-black/20 rounded-lg p-4 text-center">01:00</div>
+                    </div>
+                    <div class="p-3 bg-black/20 rounded-lg">
+                        <h4 class="font-bold text-green-400 mb-2 text-center">Tocca Questi! (+1)</h4>
+                        <div id="tag-positive-legend" class="flex justify-center gap-2 flex-wrap"></div>
+                        <h4 class="font-bold text-red-400 mt-3 mb-2 text-center">Evita Questi! (-1)</h4>
+                        <div id="tag-negative-legend" class="flex justify-center gap-2 flex-wrap"></div>
+                    </div>
+                </div>
+                <div id="tag-arena">
+                    <!-- Oggetti spawnano qui -->
+                </div>
+                <div class="w-1/4 flex-shrink-0">
+                    <h3 class="text-xl font-bold text-cyan-300 mb-2">Classifica Live</h3>
+                    <div id="tag-leaderboard" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schermata Gioco Porta della Morte -->
+        <div id="death-door-game-screen" class="hidden panel p-4 sm:p-6 rounded-xl relative overflow-hidden min-h-[80vh]">
+            <div id="dd-intro-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center intro-overlay opacity-0 hidden">
+                <h2 class="text-5xl font-black mb-6 text-purple-400" style="text-shadow: 0 0 15px #a855f7;">Porta della Morte</h2>
+                <div class="space-y-4 text-lg max-w-2xl mx-auto">
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">⏱️</span><span>Ogni round hai <b>15 secondi</b> per scegliere la tua porta.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">❌</span><span>Se non selezioni una porta in tempo, verrai <b>eliminato</b>.</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">💀</span><span>Una delle porte è <b>maledetta</b>. Chi la sceglie, è fuori!</span></div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-3 rounded-lg"><span class="text-3xl">👑</span><span>L'<b>ultimo sopravvissuto</b> vince la partita!</span></div>
+                </div>
+                <button id="dd-start-btn" class="btn-accent font-bold py-3 px-8 rounded-lg text-xl mt-8">Ho Capito!</button>
+            </div>
+
+            <div id="dd-game-content" class="flex flex-col h-full">
+                <div id="dd-status-area" class="text-center mb-4 z-10">
+                    <h2 id="dd-round-title" class="text-3xl font-bold text-cyan-300">Round 1</h2>
+                    <p id="dd-status-text" class="text-xl text-slate-300 mt-1 h-8">Scegli la tua porta!</p>
+                    <div id="dd-timer" class="text-4xl font-bold text-yellow-300">15</div>
+                </div>
+                <!-- Spazio per gli avatar dei giocatori -->
+                <div class="h-24 mb-4"> <!-- Placeholder per gli avatar --> </div>
+                <div id="dd-doors-area" class="flex-grow flex items-center justify-center gap-4 flex-wrap p-4">
+                    <!-- Le porte vengono generate qui -->
+                </div>
+                <div class="mt-4 z-10">
+                    <h3 class="text-lg font-bold text-red-400 text-center">Eliminati</h3>
+                    <div id="dd-eliminated-area" class="p-2 rounded-lg min-h-[80px] flex flex-wrap gap-4 items-center justify-center mt-2">
+                       <!-- Giocatori eliminati qui -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schermata Riepilogo -->
+        <div id="summary-screen" class="hidden text-center panel p-8 rounded-xl">
+            <h2 id="summary-title" class="text-4xl font-bold mb-4 text-cyan-300"></h2>
+            <p id="summary-subtitle" class="text-slate-400 mb-6"></p>
+            <div id="summary-leaderboard" class="w-full max-w-md mx-auto space-y-3 mb-8"></div>
+            <div id="summary-controls"></div>
+        </div>
+
+        <!-- Schermata Selezione Minigioco (Partita Libera) -->
+        <div id="minigame-selection-screen" class="hidden text-center panel p-8 rounded-xl">
+            <h2 class="text-3xl font-bold mb-6 text-cyan-300">Scegli un Minigioco</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 justify-center max-w-4xl mx-auto">
+                 <button id="play-memory-again-btn" class="btn-secondary text-white font-bold py-4 px-6 rounded-lg">Memory</button>
+                 <button id="play-rps-btn" class="btn-primary text-white font-bold py-4 px-6 rounded-lg">Morra Cinese</button>
+                 <button id="play-lucky-dice-btn" class="btn-accent text-white font-bold py-4 px-6 rounded-lg">Dado Fortunato</button>
+                 <button id="play-bomb-btn" class="btn-danger text-white font-bold py-4 px-6 rounded-lg">Bomba</button>
+                 <button id="play-succofono-btn" class="btn-warning text-white font-bold py-4 px-6 rounded-lg">Succofono</button>
+                 <button id="play-hns-btn" class="btn-info text-white font-bold py-4 px-6 rounded-lg">Icona Misteriosa</button>
+                 <button id="play-tag-btn" class="btn-primary text-white font-bold py-4 px-6 rounded-lg" style="background-image: linear-gradient(to right, #fde047, #f59e0b);">Tocco al Volo</button>
+                 <button id="play-death-door-btn" class="btn-danger text-white font-bold py-4 px-6 rounded-lg col-span-1 md:col-span-3" style="background-image: linear-gradient(to right, #7e22ce, #4c1d95);">Porta della Morte</button>
+            </div>
+            <button id="back-to-lobby-btn" class="mt-8 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Torna alla Lobby Principale</button>
+        </div>
+
+    </div>
+    
+    <!-- Modale di Notifica -->
+    <div id="notification-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 modal-backdrop z-50" style="backdrop-filter: blur(5px);">
+        <div class="panel rounded-xl p-6 text-center max-w-sm mx-auto">
+            <p id="modal-message" class="text-lg text-white mb-6"></p>
+            <button id="modal-close-btn" class="btn-primary text-white font-bold py-2 px-6 rounded-lg">OK</button>
+        </div>
+    </div>
+
+
+    <script>
+        // --- STATO GLOBALE E DATI ---
+        let localRoomData = null;
+        let currentUser = null;
+        let userNickname = '';
+        let tempSelectedCharId = null;
+        let isActionLocked = false;
+        let audioSynth, bombSynth, tickSynth, drinkSynth, greenLightSynth, redLightSynth, hideSound, foundSound, goodTapSound, badTapSound, deathDoorSound, safeDoorSound, heartbeatSound;
+
+        const ROSTER = [
+            { id: 'gumball', name: 'Gumball', imageUrl: 'https://i.pinimg.com/736x/e4/2d/39/e42d393bf4ec481183d809a0b8cd1989.jpg' },
+            { id: 'johnny', name: 'Johnny', imageUrl: 'https://i.pinimg.com/736x/1c/3a/e4/1c3ae484ead7c408f51ed33a46f91db6.jpg' },
+            { id: 'robin', name: 'Robin', imageUrl: 'https://i.pinimg.com/736x/e7/3e/e2/e73ee222f16116892d37961f6ccf511a.jpg' },
+            { id: 'clarence', name: 'Clarence', imageUrl: 'https://i.pinimg.com/1200x/ed/50/84/ed5084c8f0cf0f3f7c9f60df18346c20.jpg' },
+            { id: 'steven', name: 'Steven', imageUrl: 'https://i.pinimg.com/736x/0f/84/b5/0f84b53a2fc5d71271ae3cc29a0e44c4.jpg' },
+            { id: 'carlos', name: 'Carlos', imageUrl: 'https://i.pinimg.com/1200x/51/47/79/5147798a95cdcdc5e1f63ed44e4d44ec.jpg' },
+            { id: 'superboy', name: 'Superboy', imageUrl: 'https://i.pinimg.com/736x/e3/b6/9e/e3b69e2535013ad4fe46a0187dfd007b.jpg' },
+            { id: 'jake', name: 'Jake', imageUrl: 'https://i.pinimg.com/736x/00/07/e5/0007e54a9a0d180850ed97718df1e432.jpg' },
+            { id: 'stewie', name: 'Stewie', imageUrl: 'https://i.pinimg.com/1200x/ff/37/ea/ff37ea1eb4a933d3ce1613a255e1fa6b.jpg' },
+            { id: 'daffy', name: 'Daffy', imageUrl: 'https://i.pinimg.com/1200x/09/ac/8b/09ac8bc06dbb233e2ffdaa65dabd9b7d.jpg' },
+            { id: 'lapis', name: 'Lapis', imageUrl: 'https://i.pinimg.com/736x/94/58/a8/9458a8a235f2cbc6a4b5b19758ace36a.jpg' },
+            { id: 'ametista', name: 'Ametista', imageUrl: 'https://i.pinimg.com/736x/fb/0e/ce/fb0ece38ed53baf9eef5cafd132d78e6.jpg' },
+            { id: 'francine', name: 'Francine', imageUrl: 'https://i.pinimg.com/736x/e3/fb/aa/e3fbaac3721a6d9f5dbf1d20f582b4c8.jpg' },
+            { id: 'lisa', name: 'Lisa', imageUrl: 'https://i.pinimg.com/736x/e5/2d/fe/e52dfee5a58f5dad19f9e0592c63a7cd.jpg' },
+            { id: 'nicole', name: 'Nicole', imageUrl: 'https://i.pinimg.com/736x/81/24/e4/8124e43da43e1d06dcdbca15f22a0cd9.jpg' },
+            { id: 'camilla', name: 'Camilla', imageUrl: 'https://i.pinimg.com/736x/16/ae/64/16ae64725907e35991fe6fa119778835.jpg' },
+            { id: 'candace', name: 'Candace', imageUrl: 'https://i.pinimg.com/736x/e3/9d/95/e39d9504c7131e87c662b1f0537c3d7b.jpg' },
+            { id: 'rosalinda', name: 'Rosalinda', imageUrl: 'https://i.pinimg.com/736x/09/14/f0/0914f029e712e92de9d4f0081a5da032.jpg' },
+            { id: 'wanda', name: 'Wanda', imageUrl: 'https://i.pinimg.com/1200x/fd/b3/ba/fdb3bada328ff3eb5aff2cc8c5bc92d1.jpg' },
+            { id: 'corvina', name: 'Corvina', imageUrl: 'https://i.pinimg.com/736x/fc/e3/30/fce330b50ce9cbf53287e441be15d597.jpg' },
+        ];
+
+        const screens = {
+            nickname: document.getElementById('nickname-screen'),
+            characterSelection: document.getElementById('character-selection-screen'),
+            lobby: document.getElementById('lobby-screen'),
+            createRoom: document.getElementById('create-room-screen'),
+            wait: document.getElementById('room-wait-screen'),
+            vote: document.getElementById('game-mode-vote-screen'),
+            memory: document.getElementById('memory-game-screen'),
+            rps: document.getElementById('rps-game-screen'),
+            luckyDice: document.getElementById('lucky-dice-game-screen'),
+            bomb: document.getElementById('bomb-game-screen'),
+            succofono: document.getElementById('succofono-game-screen'),
+            hideAndSeek: document.getElementById('hide-and-seek-game-screen'),
+            touchAndGo: document.getElementById('touch-and-go-game-screen'),
+            deathDoor: document.getElementById('death-door-game-screen'),
+            summaryScreen: document.getElementById('summary-screen'),
+            minigameSelection: document.getElementById('minigame-selection-screen'),
+        };
+
+        // --- FUNZIONI UTILI ---
+        const modal = document.getElementById('notification-modal');
+        const modalMessage = document.getElementById('modal-message');
+        document.getElementById('modal-close-btn').addEventListener('click', () => modal.classList.add('hidden'));
+
+        function showModal(message) {
+            modalMessage.textContent = message;
+            modal.classList.remove('hidden');
+        }
+
+        function showScreen(screenName) {
+            Object.values(screens).forEach(screen => screen.classList.add('hidden'));
+            if (screens[screenName]) {
+                screens[screenName].classList.remove('hidden');
+            }
+        }
+        
+        function renderAll() {
+            if (!localRoomData) return;
+            switch(localRoomData.gameState) {
+                case 'waiting': showScreen('wait'); updateWaitingRoomUI(); break;
+                case 'voting': showScreen('vote'); updateVoteUI(); break;
+                case 'character-selection': showScreen('characterSelection'); renderCharacterSelectionScreen(); break;
+                case 'in-game':
+                    const game = localRoomData.currentGame;
+                    const gameData = localRoomData.gameData;
+                    if (game === 'rps') {
+                        showScreen('rps');
+                        if (!gameData || gameData.type !== 'rps') initializeRPSGame();
+                        renderRPSGame();
+                    } else if (game === 'lucky-dice') {
+                        showScreen('luckyDice');
+                        if (!gameData || gameData.type !== 'lucky-dice') initializeLuckyDiceGame();
+                        renderLuckyDiceGame();
+                    } else if (game === 'bomb') {
+                        showScreen('bomb');
+                        if (!gameData || gameData.type !== 'bomb') initializeBombGame();
+                        renderBombGame();
+                    } else if (game === 'succofono') {
+                        showScreen('succofono');
+                        if (!gameData || gameData.type !== 'succofono') initializeSuccofonoGame();
+                        renderSuccofonoGame();
+                    } else if (game === 'hide-and-seek') {
+                        showScreen('hideAndSeek');
+                        if (!gameData || gameData.type !== 'hide-and-seek') initializeHideAndSeekGame();
+                        renderHideAndSeekGame();
+                    } else if (game === 'touch-and-go') {
+                        showScreen('touchAndGo');
+                        if (!gameData || gameData.type !== 'touch-and-go') initializeTouchAndGoGame();
+                        renderTouchAndGoGame();
+                    } else if (game === 'death-door') {
+                        showScreen('deathDoor');
+                        if (!gameData || gameData.type !== 'death-door') initializeDeathDoorGame();
+                        renderDeathDoorGame();
+                    } else { 
+                        showScreen('memory');
+                        if (!gameData || gameData.type !== 'memory') initializeMemoryGame();
+                        renderMemoryGame();
+                    }
+                    break;
+                case 'round-end':
+                case 'championship-finished':
+                case 'free-play-finished':
+                    showScreen('summaryScreen');
+                    renderSummaryScreen();
+                    break;
+                case 'minigame-selection':
+                    showScreen('minigameSelection');
+                    break;
+            }
+        }
+
+        // --- FLUSSO PRINCIPALE E SETUP ---
+        document.addEventListener('DOMContentLoaded', () => {
+            try { 
+                audioSynth = new Tone.Synth().toDestination(); 
+                bombSynth = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0 } }).toDestination();
+                tickSynth = new Tone.MembraneSynth().toDestination();
+                drinkSynth = new Tone.AMSynth({ harmonicity: 1.5, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 }, oscillator: { type: 'sine' }, modulation: { type: 'square' }, modulationEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2 } }).toDestination();
+                greenLightSynth = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.1 } }).toDestination();
+                redLightSynth = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.2 } }).toDestination();
+                hideSound = new Tone.PluckSynth({ attackNoise: 1, dampening: 4000, resonance: 0.7 }).toDestination();
+                foundSound = new Tone.MetalSynth({ frequency: 50, envelope: { attack: 0.001, decay: 0.4, release: 0.2 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }).toDestination();
+                goodTapSound = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 } }).toDestination();
+                badTapSound = new Tone.Synth({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.1 } }).toDestination();
+                deathDoorSound = new Tone.NoiseSynth({ noise: { type: "pink" }, envelope: { attack: 0.2, decay: 1.5, sustain: 0 } }).toDestination();
+                safeDoorSound = new Tone.Synth({ oscillator: { type: "fmsine", modulationType: "triangle", harmonicity: 0.5 }, envelope: { attack: 0.1, decay: 0.5, sustain: 0.1, release: 1 } }).toDestination();
+                heartbeatSound = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 2, oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4, attackCurve: "exponential" } }).toDestination();
+            } catch (e) { console.error("Tone.js non è stato inizializzato."); }
+            
+            document.getElementById('join-lobby-btn').addEventListener('click', joinLobby);
+            document.getElementById('confirm-character-btn').addEventListener('click', handleCharacterConfirmation);
+            document.getElementById('create-room-btn').addEventListener('click', () => showScreen('createRoom'));
+            document.getElementById('confirm-create-room-btn').addEventListener('click', createRoom);
+            document.getElementById('add-cpu-btn').addEventListener('click', addCpu);
+            document.getElementById('start-game-btn').addEventListener('click', startGame);
+            document.getElementById('play-memory-again-btn').addEventListener('click', () => startNewGame('memory'));
+            document.getElementById('play-rps-btn').addEventListener('click', () => startNewGame('rps'));
+            document.getElementById('play-lucky-dice-btn').addEventListener('click', () => startNewGame('lucky-dice'));
+            document.getElementById('play-bomb-btn').addEventListener('click', () => startNewGame('bomb'));
+            document.getElementById('play-succofono-btn').addEventListener('click', () => startNewGame('succofono'));
+            document.getElementById('play-hns-btn').addEventListener('click', () => startNewGame('hide-and-seek'));
+            document.getElementById('play-tag-btn').addEventListener('click', () => startNewGame('touch-and-go'));
+            document.getElementById('play-death-door-btn').addEventListener('click', () => startNewGame('death-door'));
+            document.getElementById('back-to-lobby-btn').addEventListener('click', () => { localRoomData = null; showScreen('lobby'); });
+            document.querySelectorAll('.vote-btn').forEach(btn => btn.addEventListener('click', handleVote));
+            
+            const playerCountSlider = document.getElementById('player-count-slider');
+            playerCountSlider.addEventListener('input', (e) => document.getElementById('player-count-value').textContent = e.target.value);
+            const cpuDifficultySlider = document.getElementById('cpu-difficulty-slider');
+            cpuDifficultySlider.addEventListener('input', (e) => document.getElementById('cpu-difficulty-value').textContent = e.target.value);
+            const roundsCountSlider = document.getElementById('rounds-count-slider');
+            roundsCountSlider.addEventListener('input', (e) => document.getElementById('rounds-count-value').textContent = e.target.value);
+
+            document.getElementById('drink-btn').addEventListener('click', () => handleDrinkPress());
+
+            document.getElementById('player-list').addEventListener('click', handleRemoveCpu);
+            document.getElementById('pass-bomb-btn').addEventListener('click', handlePassBomb);
+            
+            // Listeners per i pulsanti di avvio degli intro
+            document.getElementById('dd-start-btn').addEventListener('click', startDeathDoorRound);
+            document.getElementById('memory-start-btn').addEventListener('click', startMemoryGame);
+            document.getElementById('rps-start-btn').addEventListener('click', startRPSGame);
+            document.getElementById('lucky-dice-start-btn').addEventListener('click', startLuckyDiceGame);
+            document.getElementById('bomb-start-btn').addEventListener('click', startBombGame);
+            document.getElementById('succofono-start-btn').addEventListener('click', startSuccofonoGame);
+            document.getElementById('hns-start-btn').addEventListener('click', initializeHideAndSeekGame);
+            document.getElementById('tag-start-btn').addEventListener('click', startTouchAndGoGame);
+
+            setupRosterGrid();
+        });
+
+        function joinLobby() {
+            const input = document.getElementById('nickname-input');
+            if (input.value.trim().length > 2) {
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                userNickname = input.value.trim();
+                currentUser = { id: `localUser_${Date.now()}`, nickname: userNickname };
+                showScreen('lobby');
+            } else {
+                input.classList.add('shake');
+                setTimeout(() => input.classList.remove('shake'), 500);
+            }
+        }
+        
+        function createRoom() {
+            const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+            localRoomData = {
+                id: roomId,
+                hostId: currentUser.id,
+                players: [{ ...currentUser, score: 0, isHost: true, hasVoted: false, hasSelectedCharacter: false }],
+                maxPlayers: parseInt(document.getElementById('player-count-slider').value),
+                gameState: 'waiting',
+                cpuDifficulty: parseInt(document.getElementById('cpu-difficulty-slider').value),
+                championshipRounds: parseInt(document.getElementById('rounds-count-slider').value),
+            };
+            renderAll();
+        }
+
+        function updateWaitingRoomUI() {
+            document.getElementById('room-code-display').textContent = localRoomData.id;
+            document.getElementById('current-players').textContent = localRoomData.players.length;
+            document.getElementById('max-players').textContent = localRoomData.maxPlayers;
+            const playerList = document.getElementById('player-list');
+            playerList.innerHTML = '';
+            const isHost = localRoomData.hostId === currentUser.id;
+
+            localRoomData.players.forEach(p => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = 'bg-slate-700/50 p-3 rounded-lg text-center border border-slate-600 flex flex-col items-center gap-2 relative';
+                const crown = p.isHost ? '👑' : (p.isCPU ? '🤖' : '');
+                const imageUrl = p.character ? p.character.imageUrl : 'https://placehold.co/64x64/475569/94a3b8?text=?';
+                
+                let removeBtn = '';
+                if (isHost && p.isCPU) {
+                    removeBtn = `<button data-player-id="${p.id}" class="remove-cpu-btn absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white font-bold w-6 h-6 rounded-full flex items-center justify-center p-1">&times;</button>`;
+                }
+
+                playerDiv.innerHTML = `
+                    ${removeBtn}
+                    <img src="${imageUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-slate-500">
+                    <span class="font-bold">${crown} ${p.nickname}</span>`;
+                playerList.appendChild(playerDiv);
+            });
+            document.getElementById('start-game-btn').disabled = localRoomData.players.length < 2;
+            document.getElementById('add-cpu-btn').disabled = localRoomData.players.length >= localRoomData.maxPlayers;
+        }
+        
+        function addCpu() {
+            if (localRoomData.players.length >= localRoomData.maxPlayers) return;
+            const cpuCount = localRoomData.players.filter(p => p.isCPU).length;
+            const newCPU = { 
+                id: `cpu_${Date.now()}`, 
+                nickname: `CPU ${cpuCount + 1}`, 
+                score: 0, 
+                isCPU: true, 
+                hasVoted: true,
+                hasSelectedCharacter: true 
+            };
+            localRoomData.players.push(newCPU);
+            renderAll();
+        }
+
+        function handleRemoveCpu(e) {
+            if (!e.target.classList.contains('remove-cpu-btn')) return;
+            
+            const playerIdToRemove = e.target.dataset.playerId;
+            localRoomData.players = localRoomData.players.filter(p => p.id !== playerIdToRemove);
+            renderAll();
+        }
+
+        function startGame() {
+            localRoomData.gameState = 'voting';
+            localRoomData.votes = {};
+            localRoomData.players.forEach(p => { if (!p.isCPU) p.hasVoted = false; });
+            renderAll();
+        }
+
+        function handleVote(e) {
+            const vote = e.target.dataset.vote;
+            const playerInRoom = localRoomData.players.find(p => p.id === currentUser.id);
+            if(playerInRoom && !playerInRoom.hasVoted){
+                const newVotes = localRoomData.votes || {};
+                if (!newVotes[vote]) newVotes[vote] = [];
+                newVotes[vote].push(currentUser.id);
+                localRoomData.votes = newVotes;
+                playerInRoom.hasVoted = true;
+                renderAll();
+            }
+        }
+        
+        function updateVoteUI() {
+            const player = localRoomData.players.find(p => p.id === currentUser.id);
+            const feedback = document.getElementById('vote-feedback');
+            if (player && player.hasVoted) {
+                document.getElementById('vote-options').classList.add('hidden');
+                feedback.textContent = 'Hai votato. In attesa degli altri giocatori...';
+            } else {
+                 document.getElementById('vote-options').classList.remove('hidden');
+                 feedback.textContent = '';
+            }
+            const humanPlayers = localRoomData.players.filter(p => !p.isCPU);
+            const votedHumanPlayers = humanPlayers.filter(p => p.hasVoted);
+
+            if (votedHumanPlayers.length === humanPlayers.length) {
+                const votes = localRoomData.votes || {};
+                const freePlayVotes = votes['free-play']?.length || 0;
+                const championshipVotes = votes['championship']?.length || 0;
+                localRoomData.gameMode = championshipVotes > freePlayVotes ? 'championship' : 'free-play';
+                
+                localRoomData.gameState = 'character-selection';
+                renderAll();
+            }
+        }
+        
+        // --- LOGICA SELEZIONE PERSONAGGIO ---
+        function setupRosterGrid() {
+            const grid = document.getElementById('roster-grid');
+            grid.innerHTML = '';
+            ROSTER.forEach(char => {
+                const card = document.createElement('div');
+                card.className = 'character-card aspect-square rounded-lg overflow-hidden bg-slate-700';
+                card.dataset.charId = char.id;
+                card.innerHTML = `<img src="${char.imageUrl}" alt="${char.name}" class="w-full h-full main-img"><div class="taken-overlay hidden"></div>`;
+                card.addEventListener('click', () => handleCharacterClick(char.id));
+                grid.appendChild(card);
+            });
+        }
+
+        function handleCharacterClick(charId) {
+            const player = localRoomData.players.find(p => p.id === currentUser.id);
+            if (player.hasSelectedCharacter) return;
+
+            const isTaken = localRoomData.players.some(p => p.character && p.character.id === charId);
+            if (isTaken) return;
+
+            tempSelectedCharId = charId;
+            document.querySelectorAll('.character-card').forEach(c => c.classList.remove('selected'));
+            document.querySelector(`.character-card[data-char-id="${charId}"]`).classList.add('selected');
+            document.getElementById('confirm-character-btn').disabled = false;
+        }
+
+        function handleCharacterConfirmation() {
+            if (!tempSelectedCharId) return;
+            const player = localRoomData.players.find(p => p.id === currentUser.id);
+            if (player) {
+                player.character = ROSTER.find(c => c.id === tempSelectedCharId);
+                player.hasSelectedCharacter = true;
+                tempSelectedCharId = null;
+                renderAll();
+            }
+        }
+
+        function renderCharacterSelectionScreen() {
+            const humanPlayers = localRoomData.players.filter(p => !p.isCPU);
+            const selectedPlayers = humanPlayers.filter(p => p.hasSelectedCharacter);
+            const statusEl = document.getElementById('character-selection-status');
+            statusEl.textContent = `In attesa di ${humanPlayers.length - selectedPlayers.length} giocatori...`;
+
+            const confirmBtn = document.getElementById('confirm-character-btn');
+            const me = localRoomData.players.find(p => p.id === currentUser.id);
+            if(me.hasSelectedCharacter) {
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = "Scelta Confermata!";
+            }
+
+            const takenCharIds = new Set(localRoomData.players.map(p => p.character?.id).filter(Boolean));
+            document.querySelectorAll('.character-card').forEach(card => {
+                const charId = card.dataset.charId;
+                const overlay = card.querySelector('.taken-overlay');
+                if (takenCharIds.has(charId)) {
+                    card.classList.add('taken');
+                    const owner = localRoomData.players.find(p => p.character?.id === charId);
+                    overlay.innerHTML = `<img src="${owner.character.imageUrl}" title="${owner.nickname}">`;
+                    overlay.classList.remove('hidden');
+                } else {
+                    card.classList.remove('taken');
+                    overlay.classList.add('hidden');
+                }
+            });
+
+            if (selectedPlayers.length === humanPlayers.length) {
+                const availableChars = ROSTER.filter(char => !takenCharIds.has(char.id));
+                availableChars.sort(() => Math.random() - 0.5);
+                localRoomData.players.forEach(p => {
+                    if (p.isCPU && !p.character) {
+                        const char = availableChars.pop();
+                        if (char) {
+                           p.character = char;
+                           p.nickname = char.name; // Assegna il nome del personaggio come nickname per i CPU
+                        }
+                    }
+                });
+
+                if (localRoomData.gameMode === 'free-play') {
+                    localRoomData.gameState = 'minigame-selection';
+                } else {
+                    localRoomData.gameState = 'in-game';
+                    localRoomData.currentRound = 1;
+                    localRoomData.players.forEach(p => { p.score = 0; });
+                    localRoomData.gameSequence = ['memory', 'rps', 'lucky-dice', 'bomb', 'succofono', 'hide-and-seek', 'touch-and-go', 'death-door'];
+                    localRoomData.gameSequence.sort(() => Math.random() - 0.5);
+                    localRoomData.currentGame = localRoomData.gameSequence[0];
+                    localRoomData.currentPlayerIndex = Math.floor(Math.random() * localRoomData.players.length);
+                }
+                renderAll();
+            }
+        }
+        
+        function startNewGame(gameName) {
+            localRoomData.gameState = 'in-game';
+            localRoomData.currentGame = gameName;
+            localRoomData.gameData = null; // Resetta i dati del gioco precedente
+            localRoomData.players.forEach(p => p.score = 0);
+            localRoomData.currentPlayerIndex = Math.floor(Math.random() * localRoomData.players.length);
+            renderAll();
+        }
+        
+        function hideIntroOverlay(overlayId, callback) {
+            const introOverlay = document.getElementById(overlayId);
+            introOverlay.style.opacity = '0';
+            setTimeout(() => {
+                introOverlay.classList.add('hidden');
+                if(callback) callback();
+            }, 500); // Durata della transizione CSS
+        }
+        
+        // --- LOGICA MEMORY ---
+        const EMOJI_POOL = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🍎', '🍌', '🍇', '🍓', '🍑', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🌽', '🥕', '🧄', '🧅', '🥔', '🥐', '🥨', '🧀', '🍔', '🍕'];
+        function initializeMemoryGame() {
+            localRoomData.gameData = { type: 'memory', status: 'intro' };
+            const introOverlay = document.getElementById('memory-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startMemoryGame() {
+            hideIntroOverlay('memory-intro-overlay', () => {
+                const gameData = localRoomData.gameData;
+                gameData.status = 'playing';
+                gameData.cpuMemory = {}; // Inizializza la memoria della CPU
+
+                const numPairs = 24; // Per una griglia 6x8
+                const cardPool = [...EMOJI_POOL].sort(() => 0.5 - Math.random()).slice(0, numPairs);
+                let cards = [...cardPool, ...cardPool];
+                cards.sort(() => 0.5 - Math.random());
+
+                gameData.board = cards.map((emoji, index) => ({
+                    id: index,
+                    charId: emoji, // Usiamo l'emoji come ID
+                    isFlipped: false,
+                    isMatched: false,
+                }));
+                gameData.flippedCards = [];
+                gameData.pairsFound = {};
+                localRoomData.players.forEach(p => gameData.pairsFound[p.id] = 0);
+                
+                isActionLocked = false;
+                renderMemoryGame();
+
+                const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+                if (currentPlayer.isCPU) {
+                    setTimeout(runCpuTurn, 1500);
+                }
+            });
+        }
+        function renderMemoryGame() {
+            const gameData = localRoomData.gameData;
+            const board = document.getElementById('memory-board');
+            board.innerHTML = '';
+            const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+            document.getElementById('current-player-turn').textContent = currentPlayer.nickname;
+            document.getElementById('current-player-turn').style.color = currentPlayer.isCPU ? '#f87171' : '#67e8f9';
+            
+            const tempScores = localRoomData.players.map(p => ({...p, score: gameData.pairsFound[p.id] || 0 }));
+            updateLeaderboard(document.getElementById('leaderboard'), tempScores, currentPlayer.id);
+
+            const cardCount = gameData.board.length;
+            let cols = 8; // Griglia 8x6
+            board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            
+            gameData.board.forEach(cardData => {
+                const cardContainer = document.createElement('div');
+                cardContainer.className = 'card-container aspect-square';
+                const cardEl = document.createElement('div');
+                cardEl.className = 'card';
+                cardEl.dataset.cardId = cardData.id;
+
+                if (cardData.isFlipped) cardEl.classList.add('flipped');
+                if (cardData.isMatched) cardEl.classList.add('matched');
+
+                cardEl.innerHTML = `
+                    <div class="back bg-slate-700 hover:bg-slate-600 cursor-pointer"></div>
+                    <div class="front bg-slate-900 flex items-center justify-center p-1">${cardData.charId}</div>
+                `;
+
+                if (!cardData.isFlipped && !cardData.isMatched) {
+                    cardEl.addEventListener('click', () => handleCardClick(cardData.id));
+                }
+                cardContainer.appendChild(cardEl);
+                board.appendChild(cardContainer);
+            });
+        }
+        function handleCardClick(cardId) {
+            if (isActionLocked) return;
+            const player = localRoomData.players[localRoomData.currentPlayerIndex];
+            if (player.isCPU) return;
+
+            const card = localRoomData.gameData.board.find(c => c.id === cardId);
+            if (card.isFlipped || card.isMatched) return;
+
+            card.isFlipped = true;
+            localRoomData.gameData.flippedCards.push(card);
+            if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
+            renderMemoryGame();
+
+            if (localRoomData.gameData.flippedCards.length === 2) {
+                isActionLocked = true;
+                setTimeout(checkMatch, 1000);
+            }
+        }
+        function checkMatch() {
+            const gameData = localRoomData.gameData;
+            const [card1, card2] = gameData.flippedCards;
+            const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+            
+            if (card1.charId === card2.charId) {
+                card1.isMatched = true;
+                card2.isMatched = true;
+                gameData.pairsFound[currentPlayer.id]++;
+                if (audioSynth) audioSynth.triggerAttackRelease('G4', '8n');
+                
+                delete gameData.cpuMemory[card1.charId];
+
+                const allMatched = gameData.board.every(c => c.isMatched);
+                if (allMatched) {
+                    setTimeout(endMemoryGame, 1000);
+                    return;
+                }
+            } else {
+                card1.isFlipped = false;
+                card2.isFlipped = false;
+                if (audioSynth) audioSynth.triggerAttackRelease('C3', '8n');
+                localRoomData.currentPlayerIndex = (localRoomData.currentPlayerIndex + 1) % localRoomData.players.length;
+            }
+            
+            gameData.flippedCards = [];
+            isActionLocked = false;
+            renderMemoryGame();
+            
+            const nextPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+            if (nextPlayer.isCPU) {
+                setTimeout(runCpuTurn, 1500);
+            }
+        }
+        function runCpuTurn() {
+            isActionLocked = true;
+            const gameData = localRoomData.gameData;
+            const availableCards = gameData.board.filter(c => !c.isMatched && !c.isFlipped);
+            
+            // Logica CPU basata sulla difficoltà
+            const difficulty = localRoomData.cpuDifficulty; // 1-4
+            let card1, card2;
+
+            // Tentativo di trovare una coppia dalla memoria
+            let foundPair = false;
+            for (const charId in gameData.cpuMemory) {
+                if (gameData.cpuMemory[charId].length === 2) {
+                    const [id1, id2] = gameData.cpuMemory[charId];
+                    card1 = gameData.board.find(c => c.id === id1);
+                    card2 = gameData.board.find(c => c.id === id2);
+                    if (card1 && card2 && !card1.isMatched && !card2.isMatched) {
+                        foundPair = true;
+                        break;
+                    }
+                }
+            }
+
+            // Se non trova una coppia, gioca in base alla difficoltà
+            if (!foundPair) {
+                card1 = availableCards[Math.floor(Math.random() * availableCards.length)];
+                
+                // Cerca il match in memoria
+                let knownMatch = null;
+                if (gameData.cpuMemory[card1.charId] && Math.random() < (difficulty * 0.25)) {
+                    const potentialMatchId = gameData.cpuMemory[card1.charId].find(id => id !== card1.id);
+                    if (potentialMatchId !== undefined) {
+                        const potentialMatchCard = availableCards.find(c => c.id === potentialMatchId);
+                        if (potentialMatchCard) {
+                            knownMatch = potentialMatchCard;
+                        }
+                    }
+                }
+
+                if (knownMatch) {
+                    card2 = knownMatch;
+                } else {
+                    const remainingCards = availableCards.filter(c => c.id !== card1.id);
+                    card2 = remainingCards[Math.floor(Math.random() * remainingCards.length)];
+                }
+            }
+
+            // Simula il click e aggiorna la memoria
+            const flipCard = (card) => {
+                if (!card) return;
+                card.isFlipped = true;
+                gameData.flippedCards.push(card);
+                if (!gameData.cpuMemory[card.charId]) gameData.cpuMemory[card.charId] = [];
+                if (!gameData.cpuMemory[card.charId].includes(card.id)) {
+                    gameData.cpuMemory[card.charId].push(card.id);
+                }
+                if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
+                renderMemoryGame();
+            };
+
+            setTimeout(() => {
+                flipCard(card1);
+                setTimeout(() => {
+                    flipCard(card2);
+                    setTimeout(checkMatch, 1000);
+                }, 1000);
+            }, 1000);
+        }
+        function endMemoryGame() {
+            if (localRoomData.gameMode === 'championship') {
+                const playersWithTempScore = localRoomData.players.map(p => ({
+                    ...p,
+                    tempScore: localRoomData.gameData.pairsFound[p.id] || 0
+                }));
+                const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
+                awardChampionshipPoints(sortedPlayers);
+            }
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            renderAll();
+        }
+
+        // --- LOGICA MORRA CINESE ---
+        function initializeRPSGame() {
+            localRoomData.gameData = { type: 'rps', status: 'intro' };
+            const introOverlay = document.getElementById('rps-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startRPSGame() {
+            hideIntroOverlay('rps-intro-overlay', () => {
+                const gameData = localRoomData.gameData;
+                gameData.status = 'playing';
+                gameData.log = [];
+                gameData.schedule = generateRoundRobinSchedule(localRoomData.players);
+                gameData.matchupIndex = 0;
+                gameData.matchupChoices = {};
+                gameData.tempScores = {};
+                localRoomData.players.forEach(p => gameData.tempScores[p.id] = 0);
+                isActionLocked = false;
+                renderRPSGame();
+                runRPSCpuTurn();
+            });
+        }
+        function generateRoundRobinSchedule(players) {
+            const schedule = [];
+            for (let i = 0; i < players.length; i++) {
+                for (let j = i + 1; j < players.length; j++) {
+                    schedule.push([players[i].id, players[j].id]);
+                }
+            }
+            return schedule.sort(() => Math.random() - 0.5);
+        }
+        function renderRPSGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData || gameData.status !== 'playing') return;
+            
+            const matchupArea = document.getElementById('rps-matchup-area');
+            const controlsArea = document.getElementById('rps-player-controls');
+            const logArea = document.getElementById('rps-log');
+            
+            matchupArea.innerHTML = '';
+            controlsArea.innerHTML = '';
+            logArea.innerHTML = gameData.log.join('');
+            
+            const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
+            updateLeaderboard(document.getElementById('rps-leaderboard'), tempScorePlayers);
+            
+            if (gameData.matchupIndex >= gameData.schedule.length) {
+                endRPSGame();
+                return;
+            }
+
+            const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
+            const player1 = localRoomData.players.find(p => p.id === p1Id);
+            const player2 = localRoomData.players.find(p => p.id === p2Id);
+
+            matchupArea.innerHTML = `
+                <div class="flex justify-around items-center">
+                    <div class="text-center w-1/3">
+                        <img src="${player1.character.imageUrl}" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-blue-400">
+                        <h3 class="text-xl font-bold mt-2">${player1.nickname}</h3>
+                        <div id="p1-choice-display" class="text-5xl mt-4 h-16">?</div>
+                    </div>
+                    <div class="text-4xl font-black text-red-400">VS</div>
+                    <div class="text-center w-1/3">
+                        <img src="${player2.character.imageUrl}" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-green-400">
+                        <h3 class="text-xl font-bold mt-2">${player2.nickname}</h3>
+                        <div id="p2-choice-display" class="text-5xl mt-4 h-16">?</div>
+                    </div>
+                </div>`;
+            
+            const isUserInMatch = currentUser.id === p1Id || currentUser.id === p2Id;
+            const userPlayer = localRoomData.players.find(p => p.id === currentUser.id);
+            if (isUserInMatch && !userPlayer.isCPU && !gameData.matchupChoices[currentUser.id]) {
+                controlsArea.innerHTML = `
+                    <p class="mb-4 text-lg text-cyan-300">Fai la tua scelta!</p>
+                    <div class="flex justify-center gap-4">
+                        <button onclick="handleRPSChoice('rock')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✊</button>
+                        <button onclick="handleRPSChoice('paper')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✋</button>
+                        <button onclick="handleRPSChoice('scissors')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✌️</button>
+                    </div>`;
+            }
+        }
+        function handleRPSChoice(choice) {
+            if (isActionLocked) return;
+            const gameData = localRoomData.gameData;
+            gameData.matchupChoices[currentUser.id] = choice;
+            isActionLocked = true;
+            document.querySelectorAll('.rps-choice-btn').forEach(b => b.disabled = true);
+            resolveRPSMatchup();
+        }
+        function runRPSCpuTurn() {
+            const gameData = localRoomData.gameData;
+            if (gameData.matchupIndex >= gameData.schedule.length) return;
+            
+            const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
+            const player1 = localRoomData.players.find(p => p.id === p1Id);
+            const player2 = localRoomData.players.find(p => p.id === p2Id);
+            const choices = ['rock', 'paper', 'scissors'];
+
+            if (player1.isCPU && !gameData.matchupChoices[p1Id]) {
+                gameData.matchupChoices[p1Id] = choices[Math.floor(Math.random() * 3)];
+            }
+            if (player2.isCPU && !gameData.matchupChoices[p2Id]) {
+                gameData.matchupChoices[p2Id] = choices[Math.floor(Math.random() * 3)];
+            }
+            resolveRPSMatchup();
+        }
+        function resolveRPSMatchup() {
+            const gameData = localRoomData.gameData;
+            const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
+            const choice1 = gameData.matchupChoices[p1Id];
+            const choice2 = gameData.matchupChoices[p2Id];
+
+            if (!choice1 || !choice2) { // Non entrambi hanno scelto
+                isActionLocked = false;
+                return;
+            }
+
+            const player1 = localRoomData.players.find(p => p.id === p1Id);
+            const player2 = localRoomData.players.find(p => p.id === p2Id);
+            const outcomes = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+            const icons = { rock: '✊', paper: '✋', scissors: '✌️' };
+            
+            document.getElementById('p1-choice-display').textContent = icons[choice1];
+            document.getElementById('p2-choice-display').textContent = icons[choice2];
+
+            let logEntry;
+            if (outcomes[choice1] === choice2) { // Player 1 vince
+                gameData.tempScores[p1Id] += 2;
+                logEntry = `<div class="p-1 rounded bg-blue-900/50"><b>${player1.nickname}</b> (${icons[choice1]}) batte <b>${player2.nickname}</b> (${icons[choice2]})</div>`;
+            } else if (outcomes[choice2] === choice1) { // Player 2 vince
+                gameData.tempScores[p2Id] += 2;
+                logEntry = `<div class="p-1 rounded bg-green-900/50"><b>${player2.nickname}</b> (${icons[choice2]}) batte <b>${player1.nickname}</b> (${icons[choice1]})</div>`;
+            } else { // Pareggio
+                gameData.tempScores[p1Id]++;
+                gameData.tempScores[p2Id]++;
+                logEntry = `<div class="p-1 rounded bg-slate-700/50">Pareggio tra <b>${player1.nickname}</b> e <b>${player2.nickname}</b> (${icons[choice1]})</div>`;
+            }
+            gameData.log.unshift(logEntry);
+
+            setTimeout(() => {
+                gameData.matchupIndex++;
+                gameData.matchupChoices = {};
+                isActionLocked = false;
+                renderRPSGame();
+                runRPSCpuTurn();
+            }, 2500);
+        }
+        function endRPSGame() {
+            if (localRoomData.gameMode === 'championship') {
+                const playersWithTempScore = localRoomData.players.map(p => ({
+                    ...p,
+                    tempScore: localRoomData.gameData.tempScores[p.id] || 0
+                }));
+                const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
+                awardChampionshipPoints(sortedPlayers);
+            } else {
+                 localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
+            }
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            renderAll();
+        }
+
+        // --- LOGICA DADO FORTUNATO (REFACTORED) ---
+        const HUD_COLORS = ["border-red-500", "border-blue-500", "border-green-500", "border-yellow-500", "border-purple-500", "border-pink-500", "border-indigo-500", "border-teal-500"];
+        function initializeLuckyDiceGame() {
+            localRoomData.gameData = { type: 'lucky-dice', status: 'intro' };
+            const introOverlay = document.getElementById('lucky-dice-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startLuckyDiceGame() {
+            hideIntroOverlay('lucky-dice-intro-overlay', () => {
+                const gameData = localRoomData.gameData;
+                gameData.status = 'playing';
+                gameData.mainTimer = 180; // 3 minuti
+                gameData.playerProgress = {};
+                const shuffledColors = [...HUD_COLORS].sort(() => 0.5 - Math.random());
+                localRoomData.players.forEach((p, index) => {
+                    gameData.playerProgress[p.id] = {
+                        needed: [1, 2, 3, 4, 5, 6],
+                        collectedCount: 0,
+                        lastCollectionTime: 0,
+                        diceValue: '🎲',
+                        canRoll: true,
+                        rollCooldownTimer: null,
+                        hudColor: shuffledColors[index % shuffledColors.length]
+                    };
+                    if (p.isCPU) {
+                        scheduleCpuRoll(p.id);
+                    }
+                });
+                gameData.gameInterval = setInterval(updateLuckyDiceGame, 1000);
+                renderLuckyDiceGame();
+            });
+        }
+        function updateLuckyDiceGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status !== 'playing') return;
+
+            gameData.mainTimer--;
+
+            if (gameData.mainTimer <= 0 || localRoomData.players.every(p => gameData.playerProgress[p.id].needed.length === 0)) {
+                endLuckyDiceGame();
+            }
+            renderLuckyDiceGame();
+        }
+        function handlePlayerRoll(playerId) {
+            const gameData = localRoomData.gameData;
+            const progress = gameData.playerProgress[playerId];
+            if (!progress || !progress.canRoll || gameData.status !== 'playing' || progress.needed.length === 0) return;
+
+            progress.canRoll = false;
+            const roll = Math.floor(Math.random() * 6) + 1;
+            progress.diceValue = roll;
+            if(tickSynth) tickSynth.triggerAttackRelease("C4", "8n");
+            
+            const diceEl = document.querySelector(`#player-dice-card-${playerId} .player-dice-display`);
+            if (diceEl) {
+                diceEl.classList.add('rolling');
+                setTimeout(() => diceEl.classList.remove('rolling'), 200);
+            }
+
+            if (progress.needed.includes(roll)) {
+                progress.needed = progress.needed.filter(n => n !== roll);
+                progress.collectedCount++;
+                progress.lastCollectionTime = gameData.mainTimer;
+                if(goodTapSound) goodTapSound.triggerAttackRelease("G5", "8n");
+            }
+            
+            renderLuckyDiceGame(); // Update UI immediately
+
+            progress.rollCooldownTimer = setTimeout(() => {
+                progress.canRoll = true;
+                const player = localRoomData.players.find(p => p.id === playerId);
+                if (player && player.isCPU) {
+                    scheduleCpuRoll(playerId);
+                }
+                renderLuckyDiceGame(); // Update button state
+            }, 3000);
+        }
+        function scheduleCpuRoll(cpuId) {
+            const gameData = localRoomData.gameData;
+            if (!gameData || !gameData.playerProgress) { // Defensive check
+                console.error("Attempted to schedule CPU roll before gameData.playerProgress was initialized.");
+                return;
+            }
+            const progress = gameData.playerProgress[cpuId];
+            if (!progress || !progress.canRoll || gameData.status !== 'playing' || progress.needed.length === 0) return;
+
+            const delay = 100 + Math.random() * 500; // CPU reaction time
+            setTimeout(() => handlePlayerRoll(cpuId), delay);
+        }
+        function renderLuckyDiceGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData.playerProgress) return;
+
+            // Render Timers
+            const mainTimerEl = document.getElementById('lucky-dice-main-timer');
+            if(mainTimerEl) mainTimerEl.textContent = `0${Math.floor(gameData.mainTimer / 60)}:${String(gameData.mainTimer % 60).padStart(2, '0')}`;
+            
+            // Render Player Cards
+            const playersArea = document.getElementById('lucky-dice-players-area');
+            playersArea.innerHTML = '';
+            localRoomData.players.forEach(player => {
+                const progress = gameData.playerProgress[player.id];
+                const card = document.createElement('div');
+                card.id = `player-dice-card-${player.id}`;
+                card.className = `panel p-4 rounded-lg flex flex-col items-center border-4 ${progress.hudColor}`;
+                
+                let numbersHTML = '';
+                for (let i = 1; i <= 6; i++) {
+                    const isCollected = !progress.needed.includes(i);
+                    numbersHTML += `<div data-number="${i}" class="dice-number w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg ${isCollected ? 'collected' : ''}">${i}</div>`;
+                }
+
+                let buttonHTML = '';
+                if (player.id === currentUser.id) {
+                    let buttonText = 'Lancia!';
+                    let disabled = !progress.canRoll;
+                    if (progress.needed.length === 0) {
+                        buttonText = 'Completato!';
+                        disabled = true;
+                    } else if (!progress.canRoll) {
+                        buttonText = '...';
+                    }
+                    buttonHTML = `<button onclick="handlePlayerRoll('${player.id}')" class="btn-primary font-bold py-2 px-4 rounded-lg mt-4 w-full" ${disabled ? 'disabled' : ''}>${buttonText}</button>`;
+                }
+
+                card.innerHTML = `
+                    <img src="${player.character.imageUrl}" class="w-20 h-20 rounded-full object-cover">
+                    <span class="font-bold mt-2">${player.nickname}</span>
+                    <div class="flex justify-center gap-1.5 mt-2">
+                        ${numbersHTML}
+                    </div>
+                    <div class="player-dice-display text-7xl font-black my-2 h-24 flex items-center justify-center">${progress.diceValue}</div>
+                    ${buttonHTML}
+                `;
+                playersArea.appendChild(card);
+            });
+
+            // Render Live Leaderboard
+            const leaderboardEl = document.getElementById('lucky-dice-leaderboard');
+            leaderboardEl.innerHTML = '';
+            const sortedPlayers = [...localRoomData.players].sort((a, b) => {
+                const progressA = gameData.playerProgress[a.id];
+                const progressB = gameData.playerProgress[b.id];
+                if (progressA.collectedCount !== progressB.collectedCount) {
+                    return progressB.collectedCount - progressA.collectedCount;
+                }
+                return progressB.lastCollectionTime - progressA.lastCollectionTime;
+            });
+
+            sortedPlayers.forEach((p, index) => {
+                const rankIcon = ['🥇', '🥈', '🥉'][index] || `<span class="text-slate-400">${index + 1}</span>`;
+                const playerDiv = document.createElement('div');
+                playerDiv.className = 'flex items-center gap-3 p-2 bg-slate-900/50 rounded-lg';
+                playerDiv.innerHTML = `
+                    <span class="font-bold text-xl w-8 text-center">${rankIcon}</span>
+                    <img src="${p.character.imageUrl}" class="w-10 h-10 rounded-full object-cover">
+                    <span class="font-semibold">${p.nickname}</span>
+                `;
+                leaderboardEl.appendChild(playerDiv);
+            });
+        }
+        function endLuckyDiceGame() {
+            const gameData = localRoomData.gameData;
+            clearInterval(gameData.gameInterval);
+            localRoomData.players.forEach(p => {
+                if (gameData.playerProgress[p.id] && gameData.playerProgress[p.id].rollCooldownTimer) {
+                    clearTimeout(gameData.playerProgress[p.id].rollCooldownTimer);
+                }
+            });
+            
+            const sortedPlayers = [...localRoomData.players].sort((a, b) => {
+                const progressA = gameData.playerProgress[a.id];
+                const progressB = gameData.playerProgress[b.id];
+                if (progressA.collectedCount !== progressB.collectedCount) {
+                    return progressB.collectedCount - progressA.collectedCount;
+                }
+                return progressB.lastCollectionTime - progressA.lastCollectionTime;
+            });
+            
+            if (localRoomData.gameMode === 'championship') {
+                awardChampionshipPoints(sortedPlayers);
+            } else {
+                sortedPlayers.forEach((player, index) => {
+                    player.score = gameData.playerProgress[player.id].collectedCount;
+                });
+            }
+
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            setTimeout(renderAll, 2000);
+        }
+        
+        // --- LOGICA BOMBA (REFACTORED) ---
+        function initializeBombGame() {
+            localRoomData.gameData = { type: 'bomb', status: 'intro' };
+            const introOverlay = document.getElementById('bomb-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startBombGame() {
+            hideIntroOverlay('bomb-intro-overlay', () => {
+                const gameData = localRoomData.gameData;
+                gameData.status = 'playing';
+                gameData.activePlayerIds = localRoomData.players.map(p => p.id);
+                gameData.eliminatedPlayerIds = [];
+                gameData.bombHolderIndex = Math.floor(Math.random() * gameData.activePlayerIds.length);
+                startBombSubRound();
+            });
+        }
+        function startBombSubRound() {
+            const gameData = localRoomData.gameData;
+            if (gameData.activePlayerIds.length <= 1) {
+                endBombGame();
+                return;
+            }
+            gameData.bombHolderIndex = gameData.bombHolderIndex % gameData.activePlayerIds.length;
+            gameData.bombTimer = Math.random() * 5 + 7;
+            if (gameData.tickInterval) clearInterval(gameData.tickInterval);
+            gameData.tickInterval = setInterval(updateBombGame, 100);
+            isActionLocked = false;
+            renderBombGame();
+
+            const currentPlayerWithBomb = localRoomData.players.find(p => p.id === gameData.activePlayerIds[gameData.bombHolderIndex]);
+            if (currentPlayerWithBomb && currentPlayerWithBomb.isCPU) {
+                const passDelay = 500 + Math.random() * 1000 * (5 - localRoomData.cpuDifficulty);
+                setTimeout(handlePassBomb, passDelay);
+            }
+        }
+        function updateBombGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status !== 'playing') return;
+            gameData.bombTimer -= 0.1;
+
+            if (gameData.bombTimer <= 0) {
+                clearInterval(gameData.tickInterval);
+                if (bombSynth) bombSynth.triggerAttackRelease("8n");
+                
+                const eliminatedPlayerId = gameData.activePlayerIds.splice(gameData.bombHolderIndex, 1)[0];
+                gameData.eliminatedPlayerIds.push(eliminatedPlayerId);
+                
+                renderBombGame(); 
+                setTimeout(startBombSubRound, 2000);
+            }
+        }
+        function handlePassBomb() {
+            const gameData = localRoomData.gameData;
+            const currentPlayerId = gameData.activePlayerIds[gameData.bombHolderIndex];
+            if (isActionLocked || (currentUser.id !== currentPlayerId && !localRoomData.players.find(p => p.id === currentPlayerId)?.isCPU)) return;
+
+            isActionLocked = true;
+            gameData.bombHolderIndex = (gameData.bombHolderIndex + 1) % gameData.activePlayerIds.length;
+            renderBombGame();
+
+            const nextPlayer = localRoomData.players.find(p => p.id === gameData.activePlayerIds[gameData.bombHolderIndex]);
+            if (nextPlayer.isCPU) {
+                const passDelay = 500 + Math.random() * 1000 * (5 - localRoomData.cpuDifficulty);
+                setTimeout(handlePassBomb, passDelay);
+            } else {
+                isActionLocked = false;
+            }
+        }
+        function renderBombGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData || gameData.status !== 'playing') return;
+
+            document.getElementById('bomb-title').textContent = `Bomba - ${gameData.activePlayerIds.length} giocatori rimasti`;
+            if (gameData.activePlayerIds.length <= 1) {
+                document.getElementById('bomb-title').textContent = 'Bomba - Vincitore!';
+            }
+
+            const circle = document.getElementById('bomb-players-circle');
+            circle.innerHTML = '';
+            const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
+            const angleStep = 360 / activePlayers.length;
+            const bombHolderId = gameData.activePlayerIds[gameData.bombHolderIndex];
+
+            activePlayers.forEach((player, index) => {
+                const angle = angleStep * index;
+                const x = 50 + 45 * Math.cos(angle * Math.PI / 180);
+                const y = 50 + 45 * Math.sin(angle * Math.PI / 180);
+                
+                const playerEl = document.createElement('div');
+                playerEl.className = 'bomb-player relative';
+                playerEl.style.left = `${x}%`;
+                playerEl.style.top = `${y}%`;
+
+                let bombHTML = '';
+                if (player.id === bombHolderId) {
+                    playerEl.classList.add('has-bomb');
+                    bombHTML = '<span class="absolute -top-4 -right-4 text-4xl animate-pulse">💣</span>';
+                }
+
+                playerEl.innerHTML = `
+                    ${bombHTML}
+                    <img src="${player.character.imageUrl}" class="w-16 h-16 rounded-full object-cover">
+                    <div class="bg-black/50 p-1 rounded -mt-2">${player.nickname}</div>
+                `;
+                circle.appendChild(playerEl);
+            });
+
+            const eliminatedPlayersArea = document.getElementById('bomb-eliminated-players');
+            eliminatedPlayersArea.innerHTML = '';
+            gameData.eliminatedPlayerIds.forEach(playerId => {
+                const player = localRoomData.players.find(p => p.id === playerId);
+                eliminatedPlayersArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover grayscale opacity-50" title="Eliminato: ${player.nickname}">`;
+            });
+            
+            document.getElementById('pass-bomb-btn').disabled = (currentUser.id !== bombHolderId || isActionLocked);
+        }
+        function endBombGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.tickInterval) clearInterval(gameData.tickInterval);
+            
+            const winnerId = gameData.activePlayerIds[0];
+            
+            if (localRoomData.gameMode === 'championship') {
+                const finalRanking = [
+                    ...localRoomData.players.filter(p => p.id === winnerId),
+                    ...[...gameData.eliminatedPlayerIds].reverse().map(id => localRoomData.players.find(p => p.id === id))
+                ];
+                awardChampionshipPoints(finalRanking);
+            } else {
+                localRoomData.players.forEach(p => {
+                    p.score = (p.id === winnerId) ? 1 : 0;
+                });
+            }
+            
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            setTimeout(renderAll, 2000);
+        }
+        
+        // --- LOGICA SUCCOFONO (REFACTORED) ---
+        const JUICE_CLICK_FILL = 2.5;
+        const JUICE_PENALTY_DRAIN = 5;
+        const MAX_JUICE_LEVEL = 100;
+        const JUICE_COLORS = ["#ff6347", "#90ee90", "#add8e6", "#ffd700", "#dda0dd", "#ff7f50", "#00ced1", "#ffc0cb"];
+
+        function initializeSuccofonoGame() {
+            localRoomData.gameData = { type: 'succofono', status: 'intro' };
+            const introOverlay = document.getElementById('succofono-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startSuccofonoGame() {
+            hideIntroOverlay('succofono-intro-overlay', () => {
+                const gameData = localRoomData.gameData;
+                gameData.status = 'playing';
+                gameData.light = 'red';
+                gameData.players = {};
+                const shuffledColors = [...JUICE_COLORS].sort(() => 0.5 - Math.random());
+                localRoomData.players.forEach((p, index) => {
+                    gameData.players[p.id] = { 
+                        juice: 0, 
+                        isFinished: false,
+                        finishTime: null,
+                        juiceColor: shuffledColors[index % shuffledColors.length],
+                        cpuActionTimer: null
+                    };
+                });
+                
+                gameData.gameTimer = setInterval(updateSuccofonoGame, 1000 / 60); // 60fps
+                gameData.lightTimer = setTimeout(toggleTrafficLight, 2000 + Math.random() * 3000);
+                
+                document.getElementById('drink-btn').disabled = false;
+                renderSuccofonoGame();
+            });
+        }
+        function toggleTrafficLight() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status !== 'playing') return;
+            
+            gameData.light = (gameData.light === 'red') ? 'green' : 'red';
+            if(gameData.light === 'green' && greenLightSynth) greenLightSynth.triggerAttackRelease('C5', '8n');
+            if(gameData.light === 'red' && redLightSynth) redLightSynth.triggerAttackRelease('G3', '8n');
+
+            const nextToggle = (gameData.light === 'red' ? 2000 : 3000) + Math.random() * 2000;
+            gameData.lightTimer = setTimeout(toggleTrafficLight, nextToggle);
+            renderSuccofonoGame();
+        }
+        function updateSuccofonoGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status !== 'playing') return;
+
+            let activePlayers = 0;
+            localRoomData.players.forEach(p => {
+                const pData = gameData.players[p.id];
+                if (pData.isFinished) return;
+                activePlayers++;
+
+                if (p.isCPU) {
+                    runSuccofonoCpu(p, pData);
+                }
+            });
+
+            if (activePlayers <= 1) {
+                endSuccofonoGame();
+                return;
+            }
+            renderSuccofonoGame();
+        }
+        function runSuccofonoCpu(player, playerData) {
+            const gameData = localRoomData.gameData;
+            if (playerData.cpuActionTimer === null) {
+                const baseInterval = 250 - (localRoomData.cpuDifficulty * 40);
+                playerData.cpuActionTimer = setTimeout(() => {
+                    const willPress = Math.random();
+                    let mistakeChance = 0.2 - (localRoomData.cpuDifficulty * 0.04);
+                    if (localRoomData.cpuDifficulty === 4) mistakeChance = 0;
+                    
+                    if (gameData.light === 'green' && willPress > 0.1) {
+                        handleDrinkPress(player.id);
+                    } else if (gameData.light === 'red' && willPress < mistakeChance) {
+                        handleDrinkPress(player.id);
+                    }
+                    playerData.cpuActionTimer = null;
+                }, baseInterval + Math.random() * 100);
+            }
+        }
+        function handleDrinkPress(playerId = currentUser.id) {
+            const gameData = localRoomData.gameData;
+            const pData = gameData.players[playerId];
+            if (!pData || pData.isFinished || gameData.status !== 'playing') return;
+
+            if (gameData.light === 'green') {
+                pData.juice = Math.min(MAX_JUICE_LEVEL, pData.juice + JUICE_CLICK_FILL);
+                if(drinkSynth) drinkSynth.triggerAttackRelease('C4', '16n');
+                if (pData.juice >= MAX_JUICE_LEVEL) {
+                    pData.isFinished = true;
+                    pData.finishTime = Date.now();
+                }
+            } else { // Red light
+                pData.juice = Math.max(0, pData.juice - JUICE_PENALTY_DRAIN);
+                if(badTapSound) badTapSound.triggerAttackRelease('A2', '8n');
+            }
+        }
+        function renderSuccofonoGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData || !gameData.players) return;
+            
+            document.getElementById('succofono-traffic-light').className = `traffic-light ${gameData.light}`;
+            
+            const playersArea = document.getElementById('succofono-players-area');
+            playersArea.innerHTML = '';
+            localRoomData.players.forEach(p => {
+                const pData = gameData.players[p.id];
+                const playerContainer = document.createElement('div');
+                playerContainer.className = 'player-container panel p-2 rounded-lg';
+                if (pData.isFinished) playerContainer.classList.add('eliminated');
+                
+                playerContainer.innerHTML = `
+                     <img src="${p.character.imageUrl}" class="w-16 h-16 rounded-full object-cover mb-2">
+                     <span class="font-bold text-sm mb-2">${p.nickname}</span>
+                     <div class="juice-glass">
+                         <div class="juice-fill" style="height: ${pData.juice}%; background-color: ${pData.juiceColor};"></div>
+                     </div>
+                `;
+                playersArea.appendChild(playerContainer);
+            });
+        }
+        function endSuccofonoGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status === 'finished') return;
+            gameData.status = 'finished';
+
+            clearInterval(gameData.gameTimer);
+            clearTimeout(gameData.lightTimer);
+            document.getElementById('drink-btn').disabled = true;
+
+            const sortedPlayers = [...localRoomData.players].sort((a, b) => {
+                const pA = gameData.players[a.id];
+                const pB = gameData.players[b.id];
+                if (pA.isFinished && !pB.isFinished) return -1;
+                if (!pA.isFinished && pB.isFinished) return 1;
+                if (pA.isFinished && pB.isFinished) return pA.finishTime - pB.finishTime;
+                return pB.juice - pA.juice;
+            });
+            
+            if (localRoomData.gameMode === 'championship') {
+                awardChampionshipPoints(sortedPlayers);
+            } else {
+                sortedPlayers.forEach((player, index) => {
+                    player.score = Math.max(0, (localRoomData.players.length - index - 1) * 2);
+                });
+            }
+
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            setTimeout(renderAll, 2000);
+        }
+        
+        // --- LOGICA ICONA MISTERIOSA ---
+        function initializeHideAndSeekGame() {
+             hideIntroOverlay('hns-intro-overlay', () => {
+                const gameData = { 
+                    type: 'hide-and-seek', 
+                    status: 'round-start',
+                    seekerOrder: [...localRoomData.players].sort(() => Math.random() - 0.5).map(p => p.id),
+                    currentSeekerIndex: 0,
+                    round: 0
+                };
+                localRoomData.gameData = gameData;
+                localRoomData.players.forEach(p => p.score = 0); // Reset total score
+                startHnsRound();
+             });
+        }
+        function startHnsRound() {
+            const gameData = localRoomData.gameData;
+            gameData.round++;
+            gameData.status = 'hiding';
+            gameData.seekerId = gameData.seekerOrder[gameData.currentSeekerIndex];
+            gameData.hiders = localRoomData.players.filter(p => p.id !== gameData.seekerId).map(p => ({ id: p.id, spotId: null, found: false }));
+            gameData.hidingSpots = [];
+            gameData.timer = 15;
+            gameData.attemptsLeft = 5;
+
+            const numSpots = 7;
+            for(let i = 0; i < numSpots; i++) {
+                const angle = (i / numSpots) * 2 * Math.PI;
+                gameData.hidingSpots.push({
+                    id: i,
+                    x: 50 + 35 * Math.cos(angle),
+                    y: 50 + 35 * Math.sin(angle),
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                    clicked: false
+                });
+            }
+            
+            gameData.hiders.forEach(h => {
+                const player = localRoomData.players.find(p => p.id === h.id);
+                if (player.isCPU) {
+                    setTimeout(() => {
+                       const availableSpots = gameData.hidingSpots;
+                       if(availableSpots.length > 0) {
+                           h.spotId = availableSpots[Math.floor(Math.random() * availableSpots.length)].id;
+                       }
+                    }, 1000 + Math.random() * 4000);
+                }
+            });
+
+            if(gameData.roundTimer) clearInterval(gameData.roundTimer);
+            gameData.roundTimer = setInterval(updateHnsTimer, 1000);
+            renderHideAndSeekGame();
+        }
+        function updateHnsTimer() {
+            const gameData = localRoomData.gameData;
+            gameData.timer--;
+            if (gameData.timer <= 0) {
+                clearInterval(gameData.roundTimer);
+                if (gameData.status === 'hiding') {
+                    gameData.hiders.forEach(h => {
+                        if (h.spotId === null) {
+                            const availableSpots = gameData.hidingSpots;
+                            if(availableSpots.length > 0) h.spotId = availableSpots[0].id;
+                        }
+                    });
+                    startHnsSeekingPhase();
+                }
+            }
+            renderHideAndSeekGame();
+        }
+        function startHnsSeekingPhase() {
+            const gameData = localRoomData.gameData;
+            gameData.status = 'seeking';
+            renderHideAndSeekGame();
+
+            const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
+            if(seeker.isCPU) {
+                setTimeout(runHnsCpuSeeker, 1500);
+            }
+        }
+        function runHnsCpuSeeker() {
+            const gameData = localRoomData.gameData;
+            if(gameData.status !== 'seeking' || gameData.attemptsLeft <= 0) return;
+
+            const unclickedSpots = gameData.hidingSpots.filter(s => !s.clicked);
+            if(unclickedSpots.length > 0) {
+                const spotToClick = unclickedSpots[Math.floor(Math.random() * unclickedSpots.length)].id;
+                handleHnsSpotClick(spotToClick);
+
+                const allFound = gameData.hiders.every(h => h.found);
+                if(gameData.attemptsLeft > 0 && !allFound) {
+                    setTimeout(runHnsCpuSeeker, 1500 - (localRoomData.cpuDifficulty * 200));
+                }
+            }
+        }
+        function handleHnsSpotClick(spotId) {
+            const gameData = localRoomData.gameData;
+            const me = localRoomData.players.find(p => p.id === currentUser.id);
+
+            if (gameData.status === 'hiding' && me.id !== gameData.seekerId) {
+                const myHiderData = gameData.hiders.find(h => h.id === me.id);
+                myHiderData.spotId = spotId;
+                if(hideSound) hideSound.triggerAttackRelease("C4", "8n");
+                renderHideAndSeekGame();
+            } else if (gameData.status === 'seeking' && (me.id === gameData.seekerId || localRoomData.players.find(p => p.id === gameData.seekerId).isCPU)) {
+                const spot = gameData.hidingSpots.find(s => s.id === spotId);
+                if (spot.clicked) return;
+
+                spot.clicked = true;
+                gameData.attemptsLeft--;
+                
+                const hiderInSpot = gameData.hiders.find(h => h.spotId === spotId && !h.found);
+                if (hiderInSpot) {
+                    hiderInSpot.found = true;
+                    if(foundSound) foundSound.triggerAttackRelease("G5", "4n");
+                    const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
+                    seeker.score += 1;
+                } else {
+                    if(badTapSound) badTapSound.triggerAttackRelease("C3", "8n");
+                }
+                
+                const allFound = gameData.hiders.every(h => h.found);
+                if (allFound || gameData.attemptsLeft <= 0) {
+                    setTimeout(endHnsRound, 1500);
+                }
+                renderHideAndSeekGame();
+            }
+        }
+        function endHnsRound() {
+            const gameData = localRoomData.gameData;
+            gameData.status = 'round-reveal';
+            renderHideAndSeekGame(); // Render one last time to show final state
+
+            setTimeout(() => {
+                gameData.hiders.forEach(h => {
+                    if (!h.found) {
+                        const player = localRoomData.players.find(p => p.id === h.id);
+                        player.score += 2;
+                    }
+                });
+
+                gameData.currentSeekerIndex++;
+                if (gameData.currentSeekerIndex >= localRoomData.players.length) {
+                    endHnsGame();
+                } else {
+                    startHnsRound();
+                }
+            }, 4000); // Wait 4 seconds to show results before next round
+        }
+        function renderHideAndSeekGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData) return;
+
+            const arena = document.getElementById('hns-arena');
+            const statusText = document.getElementById('hns-status-text');
+            const capturedArea = document.getElementById('hns-captured-area');
+            arena.innerHTML = '';
+            capturedArea.innerHTML = '';
+
+            const me = localRoomData.players.find(p => p.id === currentUser.id);
+            const isSeeker = gameData.seekerId && me.id === gameData.seekerId;
+            const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
+            
+            if (gameData.status === 'hiding') {
+                statusText.textContent = isSeeker ? `Tu sei il cercatore! Attendi...` : `Nasconditi! Tempo: ${gameData.timer}s`;
+            } else if (gameData.status === 'seeking') {
+                const hidersLeft = gameData.hiders ? gameData.hiders.filter(h => !h.found).length : 0;
+                statusText.textContent = isSeeker ? `Trovali! ${hidersLeft} rimasti. Tentativi: ${gameData.attemptsLeft}` : `Nasconditi! ${seeker.nickname} sta cercando...`;
+            } else if (gameData.status === 'round-reveal') {
+                const notFoundHiders = gameData.hiders.filter(h => !h.found);
+                if (notFoundHiders.length > 0) {
+                    const names = notFoundHiders.map(h => localRoomData.players.find(p => p.id === h.id).nickname).join(', ');
+                    statusText.textContent = `Salvi: ${names}!`;
+                } else {
+                    statusText.textContent = 'Tutti trovati!';
+                }
+            }
+
+            // Render Seeker in the middle
+            if (seeker) {
+                const seekerEl = document.createElement('div');
+                seekerEl.className = 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center';
+                seekerEl.innerHTML = `<img src="${seeker.character.imageUrl}" class="w-24 h-24 rounded-full object-cover border-4 border-red-500"><div class="bg-red-600 text-white font-bold p-1 rounded mt-1">Cercatore</div>`;
+                arena.appendChild(seekerEl);
+            }
+
+            if (gameData.hidingSpots) {
+                gameData.hidingSpots.forEach(spot => {
+                    if (spot.clicked && gameData.status !== 'round-reveal') return; 
+                    const spotEl = document.createElement('div');
+                    spotEl.className = 'hns-icon';
+                    spotEl.style.left = `calc(${spot.x}% - 40px)`;
+                    spotEl.style.top = `calc(${spot.y}% - 40px)`;
+                    spotEl.style.backgroundColor = spot.color;
+                    
+                    const myChoice = gameData.hiders.find(h => h.id === me.id)?.spotId;
+                    if (gameData.status === 'hiding' && !isSeeker) {
+                        spotEl.classList.add('hiding-spot');
+                        if (myChoice === spot.id) spotEl.classList.add('selected-spot');
+                        spotEl.onclick = () => handleHnsSpotClick(spot.id);
+                    } else if (gameData.status === 'seeking' && isSeeker) {
+                        spotEl.classList.add('hiding-spot');
+                        spotEl.onclick = () => handleHnsSpotClick(spot.id);
+                    }
+                    
+                    const hidersInSpot = gameData.hiders.filter(h => h.spotId === spot.id);
+                    if (gameData.status === 'hiding' && !isSeeker) {
+                        hidersInSpot.forEach(h => {
+                            const player = localRoomData.players.find(p => p.id === h.id);
+                            spotEl.innerHTML += `<img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover opacity-50">`;
+                        });
+                    }
+                    
+                    if (hidersInSpot.length > 0 && (hidersInSpot.some(h => h.found) || gameData.status === 'round-reveal')) {
+                        spotEl.classList.add('disappeared');
+                        hidersInSpot.forEach(hider => {
+                            const player = localRoomData.players.find(p => p.id === hider.id);
+                            const avatarEl = document.createElement('img');
+                            avatarEl.src = player.character.imageUrl;
+                            avatarEl.className = 'hns-player-avatar revealed';
+                            avatarEl.style.left = `calc(${spot.x}% - 25px)`;
+                            avatarEl.style.top = `calc(${spot.y}% - 25px)`;
+                            arena.appendChild(avatarEl);
+                        });
+                    }
+                    
+                    arena.appendChild(spotEl);
+                });
+            }
+
+            if (gameData.hiders) {
+                const foundHiders = gameData.hiders.filter(h => h.found);
+                foundHiders.forEach(h => {
+                    const player = localRoomData.players.find(p => p.id === h.id);
+                    capturedArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-10 h-10 rounded-full object-cover" title="${player.nickname}">`;
+                });
+            }
+            updateLeaderboard(document.getElementById('hns-leaderboard'), localRoomData.players);
+        }
+        function endHnsGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status === 'finished') return;
+            gameData.status = 'finished';
+            clearInterval(gameData.roundTimer);
+            
+            if (localRoomData.gameMode === 'championship') {
+                const sortedPlayers = [...localRoomData.players].sort((a,b) => b.score - a.score);
+                awardChampionshipPoints(sortedPlayers);
+            }
+
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            setTimeout(renderAll, 2000);
+        }
+        
+        // --- LOGICA TOCCO AL VOLO ---
+        const TAG_ITEMS = {
+            positive: [ { id: 'star', url: 'https://em-content.zobj.net/source/apple/354/star_2b50.png', score: 1 }, { id: 'heart', url: 'https://em-content.zobj.net/source/apple/354/red-heart_2764-fe0f.png', score: 1 } ],
+            negative: [ { id: 'bomb', url: 'https://em-content.zobj.net/source/apple/354/bomb_1f4a3.png', score: -1 }, { id: 'skull', url: 'https://em-content.zobj.net/source/apple/354/skull_1f480.png', score: -1 } ],
+        };
+        function initializeTouchAndGoGame() {
+            localRoomData.gameData = { type: 'touch-and-go', status: 'intro' };
+            const introOverlay = document.getElementById('tag-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startTouchAndGoGame() {
+             hideIntroOverlay('tag-intro-overlay', () => {
+                const gameData = localRoomData.gameData;
+                gameData.status = 'playing';
+                gameData.timer = 60;
+                gameData.tempScores = {};
+                localRoomData.players.forEach(p => gameData.tempScores[p.id] = 0);
+                
+                populateTagLegend();
+                gameData.gameTimer = setInterval(() => updateTouchAndGoGame('timer'), 1000);
+                gameData.spawnInterval = setInterval(() => spawnTagItem(), 500);
+                gameData.cpuInterval = setInterval(() => runTagCpuTurn(), 1000);
+                
+                renderTouchAndGoGame();
+             });
+        }
+        function populateTagLegend() {
+            const posLegend = document.getElementById('tag-positive-legend');
+            const negLegend = document.getElementById('tag-negative-legend');
+            posLegend.innerHTML = TAG_ITEMS.positive.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
+            negLegend.innerHTML = TAG_ITEMS.negative.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
+        }
+        function updateTouchAndGoGame(source) {
+            const gameData = localRoomData.gameData;
+            if(source === 'timer') gameData.timer--;
+
+            if (gameData.timer <= 0) {
+                endTouchAndGoGame();
+            } else {
+                 renderTouchAndGoGame();
+            }
+        }
+        function spawnTagItem() {
+            const isPositive = Math.random() > 0.3; // 70% chance of positive
+            const itemType = isPositive ? 'positive' : 'negative';
+            const itemData = TAG_ITEMS[itemType][Math.floor(Math.random() * TAG_ITEMS[itemType].length)];
+            
+            const itemEl = document.createElement('img');
+            itemEl.src = itemData.url;
+            itemEl.className = `tag-item ${itemType}`;
+            itemEl.dataset.score = itemData.score;
+            
+            const arena = document.getElementById('tag-arena');
+            const arenaRect = arena.getBoundingClientRect();
+            itemEl.style.left = `${Math.random() * (arenaRect.width - 65)}px`;
+            itemEl.style.top = `${Math.random() * (arenaRect.height - 65)}px`;
+
+            itemEl.addEventListener('click', handleTagItemClick);
+            arena.appendChild(itemEl);
+            
+            setTimeout(() => {
+                if(itemEl.parentElement) itemEl.remove();
+            }, 4000 + Math.random() * 2000); // Remove after 4-6 seconds
+        }
+        function handleTagItemClick(e) {
+            const itemEl = e.target;
+            const score = parseInt(itemEl.dataset.score);
+            const player = localRoomData.players.find(p => p.id === currentUser.id);
+            
+            if (player) {
+                localRoomData.gameData.tempScores[player.id] += score;
+                if(score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('C5', '8n');
+                if(score < 0 && badTapSound) badTapSound.triggerAttackRelease('C3', '8n');
+            }
+            
+            itemEl.classList.add('popped');
+            setTimeout(() => itemEl.remove(), 300);
+            updateTouchAndGoGame('click');
+        }
+        function runTagCpuTurn() {
+            const arena = document.getElementById('tag-arena');
+            const availableItems = Array.from(arena.querySelectorAll('.tag-item:not(.popped)'));
+            if (availableItems.length === 0) return;
+
+            localRoomData.players.forEach(p => {
+                if (p.isCPU) {
+                    const hitChance = 0.4 + (localRoomData.cpuDifficulty * 0.1); // 50% to 80% chance to act
+                    if (Math.random() < hitChance) {
+                        let targetItem;
+                        const positiveItems = availableItems.filter(item => item.classList.contains('positive'));
+                        
+                        const smartChance = 0.5 + (localRoomData.cpuDifficulty * 0.12); // 62% to 98% chance to be smart
+
+                        if (Math.random() < smartChance && positiveItems.length > 0) {
+                            targetItem = positiveItems[Math.floor(Math.random() * positiveItems.length)];
+                        } else {
+                            targetItem = availableItems[Math.floor(Math.random() * availableItems.length)];
+                        }
+                        
+                        if (targetItem) {
+                            const score = parseInt(targetItem.dataset.score);
+                            localRoomData.gameData.tempScores[p.id] += score;
+                            if (score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('E5', '16n');
+                            if (score < 0 && badTapSound) badTapSound.triggerAttackRelease('E3', '16n');
+
+                            targetItem.classList.add('popped');
+                            setTimeout(() => {
+                                if (targetItem.parentElement) targetItem.remove();
+                            }, 300);
+                        }
+                    }
+                }
+            });
+            updateTouchAndGoGame('cpu');
+        }
+        function renderTouchAndGoGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData) return;
+            document.getElementById('tag-timer').textContent = `00:${String(gameData.timer).padStart(2, '0')}`;
+            const userScore = gameData.tempScores[currentUser.id] || 0;
+            document.getElementById('tag-player-score').textContent = userScore;
+            
+            const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
+            updateLeaderboard(document.getElementById('tag-leaderboard'), tempScorePlayers);
+        }
+        function endTouchAndGoGame() {
+            const gameData = localRoomData.gameData;
+            clearInterval(gameData.gameTimer);
+            clearInterval(gameData.spawnInterval);
+            clearInterval(gameData.cpuInterval);
+            document.getElementById('tag-arena').innerHTML = ''; // Clear arena
+
+            const sortedPlayers = [...localRoomData.players].sort((a,b) => (gameData.tempScores[b.id] || 0) - (gameData.tempScores[a.id] || 0));
+
+            if (localRoomData.gameMode === 'championship') {
+                awardChampionshipPoints(sortedPlayers);
+            } else {
+                localRoomData.players.forEach(p => p.score = gameData.tempScores[p.id] || 0);
+            }
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            renderAll();
+        }
+
+        // --- LOGICA PORTA DELLA MORTE ---
+        const DOOR_COLORS = ["bg-red-800", "bg-blue-800", "bg-green-800", "bg-yellow-800", "bg-purple-800", "bg-pink-800", "bg-indigo-800", "bg-teal-800", "bg-gray-800", "bg-orange-800", "bg-lime-800", "bg-cyan-800", "bg-fuchsia-800", "bg-rose-800"];
+        
+        function initializeDeathDoorGame() {
+            localRoomData.gameData = {
+                type: 'death-door', status: 'intro', round: 0,
+                activePlayerIds: localRoomData.players.map(p => p.id),
+                eliminatedPlayerIds: [], doors: [], choices: {}, timer: 15,
+                roundTimerId: null, revealTimeoutId: null
+            };
+            const introOverlay = document.getElementById('dd-intro-overlay');
+            introOverlay.classList.remove('hidden');
+            setTimeout(() => introOverlay.style.opacity = '1', 10);
+        }
+        function startDeathDoorRound() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status === 'intro') {
+                hideIntroOverlay('dd-intro-overlay');
+            }
+            
+            gameData.round++;
+            gameData.status = 'choosing';
+            gameData.choices = {};
+            gameData.timer = 15;
+            isActionLocked = false;
+
+            const numDoors = gameData.activePlayerIds.length;
+            const cursedDoorIndex = Math.floor(Math.random() * numDoors);
+            gameData.doors = [];
+            
+            const shuffledColors = [...DOOR_COLORS].sort(() => 0.5 - Math.random());
+            for (let i = 0; i < numDoors; i++) {
+                gameData.doors.push({
+                    id: i, isCursed: i === cursedDoorIndex, isOpen: false,
+                    chosenBy: null, color: shuffledColors[i]
+                });
+            }
+
+            if (gameData.roundTimerId) clearInterval(gameData.roundTimerId);
+            gameData.roundTimerId = setInterval(updateDeathDoorTimer, 1000);
+            
+            localRoomData.players.forEach(p => {
+                if (p.isCPU && gameData.activePlayerIds.includes(p.id)) {
+                    runDeathDoorCpuTurn(p.id);
+                }
+            });
+
+            renderDeathDoorGame();
+        }
+        function updateDeathDoorTimer() {
+            const gameData = localRoomData.gameData;
+            if (!gameData || gameData.status !== 'choosing') {
+                clearInterval(gameData.roundTimerId); return;
+            }
+            gameData.timer--;
+            document.getElementById('dd-timer').textContent = gameData.timer;
+
+            if (gameData.timer <= 5 && heartbeatSound) heartbeatSound.triggerAttackRelease("C2", "8n");
+
+            if (gameData.timer <= 0) {
+                clearInterval(gameData.roundTimerId);
+                const playersWhoDidntChoose = gameData.activePlayerIds.filter(id => gameData.choices[id] === undefined);
+                playersWhoDidntChoose.forEach(playerId => eliminatePlayer(playerId, 'timeout'));
+                startRevealPhase();
+            }
+        }
+        function handleDoorClick(doorId) {
+            const gameData = localRoomData.gameData;
+            if (isActionLocked || gameData.status !== 'choosing' || gameData.choices[currentUser.id] !== undefined) return;
+            
+            const door = gameData.doors.find(d => d.id === doorId);
+            if (door.chosenBy) {
+                showModal("Questa porta è già stata scelta!"); return;
+            }
+            
+            gameData.choices[currentUser.id] = doorId;
+            door.chosenBy = currentUser.id;
+            
+            renderDeathDoorGame();
+            checkAllPlayersChosen();
+        }
+        function runDeathDoorCpuTurn(cpuId) {
+            const gameData = localRoomData.gameData;
+            const delay = 3000 + Math.random() * 7000;
+            
+            setTimeout(() => {
+                if (gameData.status !== 'choosing') return;
+                const availableDoors = gameData.doors.filter(d => d.chosenBy === null);
+                if (availableDoors.length > 0) {
+                    const chosenDoor = availableDoors[Math.floor(Math.random() * availableDoors.length)];
+                    gameData.choices[cpuId] = chosenDoor.id;
+                    chosenDoor.chosenBy = cpuId;
+                    renderDeathDoorGame();
+                    checkAllPlayersChosen();
+                }
+            }, delay);
+        }
+        function checkAllPlayersChosen() {
+            const gameData = localRoomData.gameData;
+            const allChosen = gameData.activePlayerIds.every(id => gameData.choices[id] !== undefined);
+            if (allChosen) {
+                clearInterval(gameData.roundTimerId);
+                startRevealPhase();
+            }
+        }
+        function startRevealPhase() {
+            const gameData = localRoomData.gameData;
+            if (gameData.status === 'revealing') return;
+            gameData.status = 'revealing';
+            isActionLocked = true;
+            renderDeathDoorGame();
+
+            const doorsInOrder = [...gameData.doors].sort((a,b) => a.isCursed - b.isCursed);
+            let revealIndex = 0;
+
+            function revealNextDoor() {
+                if (revealIndex >= doorsInOrder.length) {
+                    setTimeout(endDeathDoorRound, 2000); return;
+                }
+                const door = doorsInOrder[revealIndex];
+                if (door) {
+                    door.isOpen = true;
+                    if (door.isCursed) {
+                        if(deathDoorSound) deathDoorSound.triggerAttackRelease("1n");
+                        if (door.chosenBy) eliminatePlayer(door.chosenBy, 'cursed');
+                    } else {
+                        if(safeDoorSound) safeDoorSound.triggerAttackRelease("C4", "2n");
+                    }
+                    renderDeathDoorGame();
+                }
+                revealIndex++;
+                gameData.revealTimeoutId = setTimeout(revealNextDoor, 1500);
+            }
+            setTimeout(revealNextDoor, 1000);
+        }
+        function eliminatePlayer(playerId, reason) {
+            const gameData = localRoomData.gameData;
+            const playerIndex = gameData.activePlayerIds.indexOf(playerId);
+            if (playerIndex > -1 && !gameData.eliminatedPlayerIds.includes(playerId)) {
+                gameData.activePlayerIds.splice(playerIndex, 1);
+                gameData.eliminatedPlayerIds.push(playerId);
+            }
+        }
+        function renderDeathDoorGame() {
+            const gameData = localRoomData.gameData;
+            if (!gameData) return;
+
+            const gameContentEl = document.getElementById('dd-game-content');
+            document.getElementById('dd-round-title').textContent = `Round ${gameData.round}`;
+            document.getElementById('dd-timer').textContent = gameData.timer;
+            const statusText = document.getElementById('dd-status-text');
+            const doorsArea = document.getElementById('dd-doors-area');
+            const eliminatedArea = document.getElementById('dd-eliminated-area');
+            
+            doorsArea.innerHTML = '';
+            eliminatedArea.innerHTML = '';
+            gameContentEl.querySelectorAll('.dd-player-avatar').forEach(el => el.remove());
+
+            switch(gameData.status) {
+                case 'choosing': statusText.textContent = "Scegli saggiamente..."; break;
+                case 'revealing': statusText.textContent = "Il destino si compie!"; break;
+                default: statusText.textContent = "";
+            }
+
+            gameData.doors.forEach((door) => {
+                const doorEl = document.createElement('div');
+                doorEl.className = 'dd-door w-24 h-36 sm:w-28 sm:h-44';
+                if (door.isOpen) doorEl.classList.add('open');
+                if (door.chosenBy === currentUser.id && !door.isOpen) doorEl.classList.add('selected');
+                
+                doorEl.innerHTML = `
+                    <div class="dd-door-inner">
+                        <div class="dd-door-front ${door.color}"><span>?</span></div>
+                        <div class="dd-door-back ${door.isCursed ? 'cursed' : 'safe'}">${door.isCursed ? '💀' : '✔️'}</div>
+                    </div>`;
+                
+                if (gameData.status === 'choosing' && !door.chosenBy) {
+                    doorEl.onclick = () => handleDoorClick(door.id);
+                }
+                doorsArea.appendChild(doorEl);
+            });
+
+            const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
+            activePlayers.forEach((player, index) => {
+                const avatarEl = document.createElement('div');
+                avatarEl.className = 'dd-player-avatar';
+                avatarEl.id = `dd-avatar-${player.id}`;
+                avatarEl.innerHTML = `
+                    <img src="${player.character.imageUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-white shadow-lg">
+                    <div class="bg-black/50 text-white text-xs font-bold p-1 rounded -mt-2">${player.nickname}</div>`;
+                
+                gameContentEl.appendChild(avatarEl);
+                const choice = gameData.choices[player.id];
+                
+                let targetLeft, targetTop;
+                if (gameData.status !== 'intro' && choice !== undefined) {
+                    const doorEl = doorsArea.children[choice];
+                    if (doorEl) {
+                        targetLeft = `${doorEl.offsetLeft + doorEl.offsetWidth / 2}px`;
+                        targetTop = `${doorEl.offsetTop - 40}px`;
+                    }
+                } else {
+                    targetLeft = `${(index + 0.5) * (100 / activePlayers.length)}%`;
+                    targetTop = '120px';
+                }
+                avatarEl.style.left = targetLeft;
+                avatarEl.style.top = targetTop;
+                avatarEl.style.transform = 'translateX(-50%)';
+            });
+            
+            const eliminatedPlayers = localRoomData.players.filter(p => gameData.eliminatedPlayerIds.includes(p.id));
+            eliminatedPlayers.forEach(player => {
+                const eliminatedEl = document.createElement('div');
+                eliminatedEl.className = 'text-center';
+                eliminatedEl.innerHTML = `
+                    <img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover border-2 border-red-500 grayscale">
+                    <div class="text-xs text-slate-400">${player.nickname}</div>`;
+                eliminatedArea.appendChild(eliminatedEl);
+                
+                const avatarInArena = document.getElementById(`dd-avatar-${player.id}`);
+                if (avatarInArena) {
+                    avatarInArena.classList.add('eliminated');
+                }
+            });
+        }
+        function endDeathDoorRound() {
+            const gameData = localRoomData.gameData;
+            isActionLocked = false;
+            
+            if (gameData.activePlayerIds.length <= 1) {
+                endDeathDoorGame();
+            } else {
+                gameData.status = 'round-end-transition';
+                setTimeout(startDeathDoorRound, 3000);
+            }
+        }
+        function endDeathDoorGame() {
+            const gameData = localRoomData.gameData;
+            if (gameData.roundTimerId) clearInterval(gameData.roundTimerId);
+            if (gameData.revealTimeoutId) clearTimeout(gameData.revealTimeoutId);
+
+            const winnerId = gameData.activePlayerIds[0];
+            
+            if (localRoomData.gameMode === 'championship') {
+                const finalRanking = [
+                    ...localRoomData.players.filter(p => p.id === winnerId),
+                    ...[...gameData.eliminatedPlayerIds].reverse().map(id => localRoomData.players.find(p => p.id === id))
+                ];
+                awardChampionshipPoints(finalRanking);
+            } else {
+                localRoomData.players.forEach(p => {
+                    p.score = (p.id === winnerId) ? 1 : 0;
+                });
+            }
+
+            localRoomData.gameState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+            renderAll();
+        }
+
+        // --- FUNZIONI DI FINE GIOCO E UTILITY ---
+        function renderSummaryScreen() {
+            const { players, gameState, currentRound, championshipRounds, gameMode, currentGame } = localRoomData;
+            const title = document.getElementById('summary-title');
+            const subtitle = document.getElementById('summary-subtitle');
+            const leaderboard = document.getElementById('summary-leaderboard');
+            const controls = document.getElementById('summary-controls');
+            leaderboard.innerHTML = '';
+            controls.innerHTML = '';
+            const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+            if (gameState === 'championship-finished') {
+                title.textContent = '🏆 Campionato Finito! 🏆';
+                subtitle.textContent = `Il vincitore assoluto è ${sortedPlayers[0].nickname}!`;
+                const menuBtn = document.createElement('button');
+                menuBtn.textContent = 'Torna al Menu Principale';
+                menuBtn.className = 'btn-primary text-white font-bold py-3 px-6 rounded-lg';
+                menuBtn.onclick = () => { localRoomData = null; showScreen('lobby'); };
+                controls.appendChild(menuBtn);
+            } else if (gameState === 'round-end') {
+                title.textContent = `Fine del Round ${currentRound}`;
+                subtitle.textContent = `Ecco la classifica attuale.`;
+                const continueBtn = document.createElement('button');
+                continueBtn.textContent = 'Prosegui al Prossimo Round';
+                continueBtn.className = 'btn-secondary text-white font-bold py-3 px-6 rounded-lg';
+                continueBtn.onclick = advanceChampionship;
+                controls.appendChild(continueBtn);
+            } else if (gameState === 'free-play-finished') {
+                const gameNameMap = {'rps': 'Morra Cinese', 'memory': 'Memory', 'lucky-dice': 'Dado Fortunato', 'bomb': 'Bomba', 'succofono': 'Succofono', 'hide-and-seek': 'Icona Misteriosa', 'touch-and-go': 'Tocco al Volo', 'death-door': 'Porta della Morte'};
+                title.textContent = `🎉 Partita di ${gameNameMap[currentGame] || 'Gioco'} Finita! 🎉`;
+                subtitle.textContent = `Complimenti a tutti i giocatori!`;
+                const menuBtn = document.createElement('button');
+                menuBtn.textContent = 'Scegli un Altro Gioco';
+                menuBtn.className = 'btn-primary text-white font-bold py-3 px-6 rounded-lg';
+                menuBtn.onclick = () => { localRoomData.gameState = 'minigame-selection'; renderAll(); };
+                controls.appendChild(menuBtn);
+            }
+            sortedPlayers.forEach((p, index) => {
+                const playerDiv = document.createElement('div');
+                const rankIcon = ['🥇', '🥈', '🥉'][index] || `<span class="text-slate-400">${index + 1}°</span>`;
+                playerDiv.className = 'flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600';
+                playerDiv.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <span class="text-3xl w-8 text-center">${rankIcon}</span>
+                        <img src="${p.character.imageUrl}" class="w-12 h-12 rounded-full object-cover">
+                        <span class="font-semibold text-xl">${p.nickname}</span>
+                    </div>
+                    <span class="font-bold text-2xl text-cyan-300">${p.score}</span>`;
+                leaderboard.appendChild(playerDiv);
+            });
+        }
+        
+        function advanceChampionship() {
+            localRoomData.currentRound++;
+            if (localRoomData.currentRound > localRoomData.championshipRounds) {
+                localRoomData.gameState = 'championship-finished';
+            } else {
+                localRoomData.gameState = 'in-game';
+                localRoomData.gameData = null;
+                localRoomData.currentGame = localRoomData.gameSequence[localRoomData.currentRound - 1] || 'memory';
+                localRoomData.currentPlayerIndex = Math.floor(Math.random() * localRoomData.players.length);
+            }
+            renderAll();
+        }
+
+        function updateLeaderboard(leaderboardElement, players, currentPlayerId = null) {
+            leaderboardElement.innerHTML = '';
+            const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+            sortedPlayers.forEach((p, index) => {
+                const playerDiv = document.createElement('div');
+                let highlightClass = 'bg-slate-700/50 border-slate-600';
+                if (currentPlayerId && p.id === currentPlayerId) {
+                    highlightClass = 'bg-cyan-600/50 scale-105 shadow-lg border-cyan-400';
+                }
+                playerDiv.className = `flex items-center justify-between p-2 rounded-lg transition-all duration-300 border ${highlightClass}`;
+                playerDiv.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold text-slate-400 w-6">${index + 1}.</span>
+                        <img src="${p.character.imageUrl}" class="w-8 h-8 rounded-full object-cover">
+                        <span class="font-semibold">${p.nickname}</span>
+                    </div>
+                    <span class="font-bold text-xl text-cyan-300">${p.score}</span>`;
+                leaderboardElement.appendChild(playerDiv);
+            });
+        }
+        
+    </script>
+</body>
+</html>
