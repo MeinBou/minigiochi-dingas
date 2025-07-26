@@ -815,6 +815,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-firestore-compat.js"></script>
     <script>
+      // Dichiara 'db' in un ambito più ampio per renderlo accessibile allo script del gioco
+      let db;
+
       // La tua configurazione personale di Firebase
       const firebaseConfig = {
         apiKey: "AIzaSyDq4EpjTmDOP21tHkQO-VmAPXuUcfx-p1E",
@@ -827,8 +830,13 @@
       };
 
       // Inizializza Firebase
-      firebase.initializeApp(firebaseConfig);
-      const db = firebase.firestore(); // Inizializziamo il nostro database
+      try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore(); // Assegna il valore a 'db'
+      } catch (e) {
+        console.error("Errore di inizializzazione Firebase:", e);
+        alert("Impossibile connettersi ai servizi di gioco. Ricarica la pagina.");
+      }
     </script>
 
     <script>
