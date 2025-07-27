@@ -522,15 +522,19 @@
             </div>
         </div>
         
-        <!-- Schermata Voto Modalità -->
-        <div id="game-mode-vote-screen" class="hidden text-center panel p-8 rounded-xl">
-            <h2 class="text-3xl font-bold mb-6 text-cyan-300">Scegli la modalità di gioco</h2>
-            <p class="text-slate-400 mb-6">La modalità con più voti verrà scelta.</p>
-            <div id="vote-options" class="flex flex-col md:flex-row gap-4 justify-center">
-                 <button data-vote="free-play" class="vote-btn btn-secondary text-white font-bold py-4 px-6 rounded-lg flex-1">Partita Libera</button>
-                 <button data-vote="championship" class="vote-btn btn-accent text-white font-bold py-4 px-6 rounded-lg flex-1">Campionato</button>
+        <!-- Schermata Scelta Modalità (Solo Host) -->
+        <div id="host-mode-selection-screen" class="hidden text-center panel p-8 rounded-xl">
+            <div id="host-controls-mode">
+                <h2 class="text-3xl font-bold mb-6 text-cyan-300">Scegli la modalità di gioco</h2>
+                <div class="flex flex-col md:flex-row gap-4 justify-center">
+                    <button id="host-select-free-play" class="btn-secondary text-white font-bold py-4 px-6 rounded-lg flex-1">Partita Libera</button>
+                    <button id="host-select-championship" class="btn-accent text-white font-bold py-4 px-6 rounded-lg flex-1">Campionato</button>
+                </div>
             </div>
-            <p id="vote-feedback" class="mt-4 text-slate-300 h-5"></p>
+            <div id="guest-wait-mode" class="hidden">
+                <h2 class="text-3xl font-bold mb-6 text-cyan-300">In attesa...</h2>
+                <p class="text-slate-400">L'host sta scegliendo la modalità di gioco.</p>
+            </div>
         </div>
 
         <!-- Schermata Gioco Memory -->
@@ -814,10 +818,10 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-firestore-compat.js"></script>
+    
     <script>
-      // Dichiara 'db' in un ambito più ampio per renderlo accessibile allo script del gioco
-      let db;
-
+      // --- INIZIALIZZAZIONE FIREBASE E SCRIPT PRINCIPALE ---
+      
       // La tua configurazione personale di Firebase
       const firebaseConfig = {
         apiKey: "AIzaSyDq4EpjTmDOP21tHkQO-VmAPXuUcfx-p1E",
@@ -830,1667 +834,1656 @@
       };
 
       // Inizializza Firebase
+      let db;
       try {
         firebase.initializeApp(firebaseConfig);
-        db = firebase.firestore(); // Assegna il valore a 'db'
+        db = firebase.firestore();
       } catch (e) {
         console.error("Errore di inizializzazione Firebase:", e);
         alert("Impossibile connettersi ai servizi di gioco. Ricarica la pagina.");
       }
-    </script>
-
-    <script>
-        // --- STATO GLOBALE E DATI ---
-        let localRoomData = null;
-        let currentUser = null;
-        let userNickname = '';
-        let tempSelectedCharId = null;
-        let isActionLocked = false;
-        let audioSynth, bombSynth, tickSynth, drinkSynth, greenLightSynth, redLightSynth, hideSound, foundSound, goodTapSound, badTapSound, deathDoorSound, safeDoorSound, heartbeatSound;
-        let unsubscribeRoomListener = null;
-        let currentRoomId = null;
-
-        const ROSTER = [
-            { id: 'gumball', name: 'Gumball', imageUrl: 'https://i.pinimg.com/736x/e4/2d/39/e42d393bf4ec481183d809a0b8cd1989.jpg' },
-            { id: 'johnny', name: 'Johnny', imageUrl: 'https://i.pinimg.com/736x/1c/3a/e4/1c3ae484ead7c408f51ed33a46f91db6.jpg' },
-            { id: 'robin', name: 'Robin', imageUrl: 'https://i.pinimg.com/736x/e7/3e/e2/e73ee222f16116892d37961f6ccf511a.jpg' },
-            { id: 'clarence', name: 'Clarence', imageUrl: 'https://i.pinimg.com/1200x/ed/50/84/ed5084c8f0cf0f3f7c9f60df18346c20.jpg' },
-            { id: 'steven', name: 'Steven', imageUrl: 'https://i.pinimg.com/736x/0f/84/b5/0f84b53a2fc5d71271ae3cc29a0e44c4.jpg' },
-            { id: 'carlos', name: 'Carlos', imageUrl: 'https://i.pinimg.com/1200x/51/47/79/5147798a95cdcdc5e1f63ed44e4d44ec.jpg' },
-            { id: 'superboy', name: 'Superboy', imageUrl: 'https://i.pinimg.com/736x/e3/b6/9e/e3b69e2535013ad4fe46a0187dfd007b.jpg' },
-            { id: 'jake', name: 'Jake', imageUrl: 'https://i.pinimg.com/736x/00/07/e5/0007e54a9a0d180850ed97718df1e432.jpg' },
-            { id: 'stewie', name: 'Stewie', imageUrl: 'https://i.pinimg.com/1200x/ff/37/ea/ff37ea1eb4a933d3ce1613a255e1fa6b.jpg' },
-            { id: 'daffy', name: 'Daffy', imageUrl: 'https://i.pinimg.com/1200x/09/ac/8b/09ac8bc06dbb233e2ffdaa65dabd9b7d.jpg' },
-            { id: 'lapis', name: 'Lapis', imageUrl: 'https://i.pinimg.com/736x/94/58/a8/9458a8a235f2cbc6a4b5b19758ace36a.jpg' },
-            { id: 'ametista', name: 'Ametista', imageUrl: 'https://i.pinimg.com/736x/fb/0e/ce/fb0ece38ed53baf9eef5cafd132d78e6.jpg' },
-            { id: 'francine', name: 'Francine', imageUrl: 'https://i.pinimg.com/736x/e3/fb/aa/e3fbaac3721a6d9f5dbf1d20f582b4c8.jpg' },
-            { id: 'lisa', name: 'Lisa', imageUrl: 'https://i.pinimg.com/736x/e5/2d/fe/e52dfee5a58f5dad19f9e0592c63a7cd.jpg' },
-            { id: 'nicole', name: 'Nicole', imageUrl: 'https://i.pinimg.com/736x/81/24/e4/8124e43da43e1d06dcdbca15f22a0cd9.jpg' },
-            { id: 'camilla', name: 'Camilla', imageUrl: 'https://i.pinimg.com/736x/16/ae/64/16ae64725907e35991fe6fa119778835.jpg' },
-            { id: 'candace', name: 'Candace', imageUrl: 'https://i.pinimg.com/736x/e3/9d/95/e39d9504c7131e87c662b1f0537c3d7b.jpg' },
-            { id: 'rosalinda', name: 'Rosalinda', imageUrl: 'https://i.pinimg.com/736x/09/14/f0/0914f029e712e92de9d4f0081a5da032.jpg' },
-            { id: 'wanda', name: 'Wanda', imageUrl: 'https://i.pinimg.com/1200x/fd/b3/ba/fdb3bada328ff3eb5aff2cc8c5bc92d1.jpg' },
-            { id: 'corvina', name: 'Corvina', imageUrl: 'https://i.pinimg.com/736x/fc/e3/30/fce330b50ce9cbf53287e441be15d597.jpg' },
-        ];
-
-        const screens = {
-            nickname: document.getElementById('nickname-screen'),
-            characterSelection: document.getElementById('character-selection-screen'),
-            lobby: document.getElementById('lobby-screen'),
-            createRoom: document.getElementById('create-room-screen'),
-            wait: document.getElementById('room-wait-screen'),
-            vote: document.getElementById('game-mode-vote-screen'),
-            memory: document.getElementById('memory-game-screen'),
-            rps: document.getElementById('rps-game-screen'),
-            luckyDice: document.getElementById('lucky-dice-game-screen'),
-            bomb: document.getElementById('bomb-game-screen'),
-            succofono: document.getElementById('succofono-game-screen'),
-            hideAndSeek: document.getElementById('hide-and-seek-game-screen'),
-            touchAndGo: document.getElementById('touch-and-go-game-screen'),
-            deathDoor: document.getElementById('death-door-game-screen'),
-            summaryScreen: document.getElementById('summary-screen'),
-            minigameSelection: document.getElementById('minigame-selection-screen'),
-        };
-
-        // --- FUNZIONI UTILI ---
-        const modal = document.getElementById('notification-modal');
-        const modalMessage = document.getElementById('modal-message');
-        document.getElementById('modal-close-btn').addEventListener('click', () => modal.classList.add('hidden'));
-
-        function showModal(message) {
-            modalMessage.textContent = message;
-            modal.classList.remove('hidden');
-        }
-
-        function showScreen(screenName) {
-            Object.values(screens).forEach(screen => screen.classList.add('hidden'));
-            if (screens[screenName]) {
-                screens[screenName].classList.remove('hidden');
-            }
-        }
-        
-        function renderAll() {
-            if (!localRoomData) return;
-            switch(localRoomData.gameState) {
-                case 'waiting': showScreen('wait'); updateWaitingRoomUI(); break;
-                case 'voting': showScreen('vote'); updateVoteUI(); break;
-                case 'character-selection': showScreen('characterSelection'); renderCharacterSelectionScreen(); break;
-                case 'in-game':
-                    const game = localRoomData.currentGame;
-                    const gameData = localRoomData.gameData;
-                    if (game === 'rps') {
-                        showScreen('rps');
-                        if (!gameData || gameData.type !== 'rps') initializeRPSGame();
-                        renderRPSGame();
-                    } else if (game === 'lucky-dice') {
-                        showScreen('luckyDice');
-                        if (!gameData || gameData.type !== 'lucky-dice') initializeLuckyDiceGame();
-                        renderLuckyDiceGame();
-                    } else if (game === 'bomb') {
-                        showScreen('bomb');
-                        if (!gameData || gameData.type !== 'bomb') initializeBombGame();
-                        renderBombGame();
-                    } else if (game === 'succofono') {
-                        showScreen('succofono');
-                        if (!gameData || gameData.type !== 'succofono') initializeSuccofonoGame();
-                        renderSuccofonoGame();
-                    } else if (game === 'hide-and-seek') {
-                        showScreen('hideAndSeek');
-                        if (!gameData || gameData.type !== 'hide-and-seek') initializeHideAndSeekGame();
-                        renderHideAndSeekGame();
-                    } else if (game === 'touch-and-go') {
-                        showScreen('touchAndGo');
-                        if (!gameData || gameData.type !== 'touch-and-go') initializeTouchAndGoGame();
-                        renderTouchAndGoGame();
-                    } else if (game === 'death-door') {
-                        showScreen('deathDoor');
-                        if (!gameData || gameData.type !== 'death-door') initializeDeathDoorGame();
-                        renderDeathDoorGame();
-                    } else { 
-                        showScreen('memory');
-                        if (!gameData || gameData.type !== 'memory') initializeMemoryGame();
-                        renderMemoryGame();
-                    }
-                    break;
-                case 'round-end':
-                case 'championship-finished':
-                case 'free-play-finished':
-                    showScreen('summaryScreen');
-                    renderSummaryScreen();
-                    break;
-                case 'minigame-selection':
-                    showScreen('minigameSelection');
-                    break;
-            }
-        }
-
-        // --- FLUSSO PRINCIPALE E SETUP ---
-        document.addEventListener('DOMContentLoaded', () => {
-            try { 
-                audioSynth = new Tone.Synth().toDestination(); 
-                bombSynth = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0 } }).toDestination();
-                tickSynth = new Tone.MembraneSynth().toDestination();
-                drinkSynth = new Tone.AMSynth({ harmonicity: 1.5, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 }, oscillator: { type: 'sine' }, modulation: { type: 'square' }, modulationEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2 } }).toDestination();
-                greenLightSynth = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.1 } }).toDestination();
-                redLightSynth = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.2 } }).toDestination();
-                hideSound = new Tone.PluckSynth({ attackNoise: 1, dampening: 4000, resonance: 0.7 }).toDestination();
-                foundSound = new Tone.MetalSynth({ frequency: 50, envelope: { attack: 0.001, decay: 0.4, release: 0.2 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }).toDestination();
-                goodTapSound = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 } }).toDestination();
-                badTapSound = new Tone.Synth({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.1 } }).toDestination();
-                deathDoorSound = new Tone.NoiseSynth({ noise: { type: "pink" }, envelope: { attack: 0.2, decay: 1.5, sustain: 0 } }).toDestination();
-                safeDoorSound = new Tone.Synth({ oscillator: { type: "fmsine", modulationType: "triangle", harmonicity: 0.5 }, envelope: { attack: 0.1, decay: 0.5, sustain: 0.1, release: 1 } }).toDestination();
-                heartbeatSound = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 2, oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4, attackCurve: "exponential" } }).toDestination();
-            } catch (e) { console.error("Tone.js non è stato inizializzato."); }
-            
-            document.getElementById('join-lobby-btn').addEventListener('click', joinLobby);
-            document.getElementById('confirm-character-btn').addEventListener('click', handleCharacterConfirmation);
-            document.getElementById('create-room-btn').addEventListener('click', () => showScreen('createRoom'));
-            document.getElementById('confirm-create-room-btn').addEventListener('click', createRoom);
-            document.getElementById('join-room-btn').addEventListener('click', joinRoom);
-            document.getElementById('add-cpu-btn').addEventListener('click', addCpu);
-            document.getElementById('start-game-btn').addEventListener('click', startGame);
-            document.getElementById('play-memory-again-btn').addEventListener('click', () => startNewGame('memory'));
-            document.getElementById('play-rps-btn').addEventListener('click', () => startNewGame('rps'));
-            document.getElementById('play-lucky-dice-btn').addEventListener('click', () => startNewGame('lucky-dice'));
-            document.getElementById('play-bomb-btn').addEventListener('click', () => startNewGame('bomb'));
-            document.getElementById('play-succofono-btn').addEventListener('click', () => startNewGame('succofono'));
-            document.getElementById('play-hns-btn').addEventListener('click', () => startNewGame('hide-and-seek'));
-            document.getElementById('play-tag-btn').addEventListener('click', () => startNewGame('touch-and-go'));
-            document.getElementById('play-death-door-btn').addEventListener('click', () => startNewGame('death-door'));
-            document.getElementById('back-to-lobby-btn').addEventListener('click', () => { localRoomData = null; showScreen('lobby'); });
-            document.querySelectorAll('.vote-btn').forEach(btn => btn.addEventListener('click', handleVote));
-            
-            const playerCountSlider = document.getElementById('player-count-slider');
-            playerCountSlider.addEventListener('input', (e) => document.getElementById('player-count-value').textContent = e.target.value);
-            const cpuDifficultySlider = document.getElementById('cpu-difficulty-slider');
-            cpuDifficultySlider.addEventListener('input', (e) => document.getElementById('cpu-difficulty-value').textContent = e.target.value);
-            const roundsCountSlider = document.getElementById('rounds-count-slider');
-            roundsCountSlider.addEventListener('input', (e) => document.getElementById('rounds-count-value').textContent = e.target.value);
-
-            document.getElementById('drink-btn').addEventListener('click', () => handleDrinkPress());
-
-            document.getElementById('player-list').addEventListener('click', handleRemoveCpu);
-            document.getElementById('pass-bomb-btn').addEventListener('click', handlePassBomb);
-            
-            // Listeners per i pulsanti di avvio degli intro
-            document.getElementById('dd-start-btn').addEventListener('click', startDeathDoorRound);
-            document.getElementById('memory-start-btn').addEventListener('click', startMemoryGame);
-            document.getElementById('rps-start-btn').addEventListener('click', startRPSGame);
-            document.getElementById('lucky-dice-start-btn').addEventListener('click', startLuckyDiceGame);
-            document.getElementById('bomb-start-btn').addEventListener('click', startBombGame);
-            document.getElementById('succofono-start-btn').addEventListener('click', startSuccofonoGame);
-            document.getElementById('hns-start-btn').addEventListener('click', initializeHideAndSeekGame);
-            document.getElementById('tag-start-btn').addEventListener('click', startTouchAndGoGame);
-
-            setupRosterGrid();
-        });
-
-        function joinLobby() {
-            const input = document.getElementById('nickname-input');
-            if (input.value.trim().length > 2) {
-                if (Tone.context.state !== 'running') {
-                    Tone.start();
-                }
-                userNickname = input.value.trim();
-                currentUser = { id: `user_${Date.now()}_${Math.random()}`, nickname: userNickname };
-                showScreen('lobby');
-            } else {
-                input.classList.add('shake');
-                setTimeout(() => input.classList.remove('shake'), 500);
-            }
-        }
-        
-        async function createRoom() {
-            const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const newRoomData = {
-                id: roomId,
-                hostId: currentUser.id,
-                players: [{ ...currentUser, score: 0, isHost: true, hasVoted: false, hasSelectedCharacter: false }],
-                maxPlayers: parseInt(document.getElementById('player-count-slider').value),
-                gameState: 'waiting',
-                cpuDifficulty: parseInt(document.getElementById('cpu-difficulty-slider').value),
-                championshipRounds: parseInt(document.getElementById('rounds-count-slider').value),
-            };
-            
-            try {
-                await db.collection('stanze').doc(roomId).set(newRoomData);
-                listenToRoom(roomId);
-            } catch (error) {
-                console.error("Errore nella creazione della stanza:", error);
-                showModal("Impossibile creare la stanza. Riprova.");
-            }
-        }
-
-        async function joinRoom() {
-            const roomId = document.getElementById('join-code-input').value.toUpperCase().trim();
-            if (!roomId) {
-                showModal("Inserisci un codice stanza.");
-                return;
-            }
-
-            const roomRef = db.collection('stanze').doc(roomId);
-            try {
-                const doc = await roomRef.get();
-                if (!doc.exists) {
-                    showModal("Stanza non trovata.");
-                    return;
-                }
-
-                const roomData = doc.data();
-                if (roomData.players.length >= roomData.maxPlayers) {
-                    showModal("La stanza è piena.");
-                    return;
-                }
-
-                const newPlayer = { ...currentUser, score: 0, isHost: false, hasVoted: false, hasSelectedCharacter: false };
-                await roomRef.update({
-                    players: firebase.firestore.FieldValue.arrayUnion(newPlayer)
-                });
-                listenToRoom(roomId);
-
-            } catch (error) {
-                console.error("Errore nell'unirsi alla stanza:", error);
-                showModal("Impossibile unirsi alla stanza. Riprova.");
-            }
-        }
-
-        function listenToRoom(roomId) {
-            currentRoomId = roomId;
-            if (unsubscribeRoomListener) {
-                unsubscribeRoomListener();
-            }
-            unsubscribeRoomListener = db.collection('stanze').doc(roomId).onSnapshot((doc) => {
-                if (doc.exists) {
-                    localRoomData = doc.data();
-                    renderAll();
-                } else {
-                    // La stanza è stata eliminata
-                    showModal("La stanza è stata chiusa dall'host.");
-                    showScreen('lobby');
-                    localRoomData = null;
-                    currentRoomId = null;
-                    if (unsubscribeRoomListener) unsubscribeRoomListener();
-                }
-            }, (error) => {
-                console.error("Errore di ascolto:", error);
-                showModal("Errore di connessione con la stanza.");
-            });
-        }
-
-        function updateFirestore(updateData) {
-            if (currentRoomId) {
-                db.collection('stanze').doc(currentRoomId).update(updateData)
-                    .catch(error => console.error("Errore nell'aggiornamento:", error));
-            }
-        }
-
-        function updateWaitingRoomUI() {
-            document.getElementById('room-code-display').textContent = localRoomData.id;
-            document.getElementById('current-players').textContent = localRoomData.players.length;
-            document.getElementById('max-players').textContent = localRoomData.maxPlayers;
-            const playerList = document.getElementById('player-list');
-            playerList.innerHTML = '';
-            const isHost = localRoomData.hostId === currentUser.id;
-
-            localRoomData.players.forEach(p => {
-                const playerDiv = document.createElement('div');
-                playerDiv.className = 'bg-slate-700/50 p-3 rounded-lg text-center border border-slate-600 flex flex-col items-center gap-2 relative';
-                const crown = p.isHost ? '👑' : (p.isCPU ? '🤖' : '');
-                const imageUrl = p.character ? p.character.imageUrl : 'https://placehold.co/64x64/475569/94a3b8?text=?';
-                
-                let removeBtn = '';
-                if (isHost && p.isCPU) {
-                    removeBtn = `<button data-player-id="${p.id}" class="remove-cpu-btn absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white font-bold w-6 h-6 rounded-full flex items-center justify-center p-1">&times;</button>`;
-                }
-
-                playerDiv.innerHTML = `
-                    ${removeBtn}
-                    <img src="${imageUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-slate-500">
-                    <span class="font-bold">${crown} ${p.nickname}</span>`;
-                playerList.appendChild(playerDiv);
-            });
-            document.getElementById('start-game-btn').disabled = !isHost || localRoomData.players.length < 2;
-            document.getElementById('add-cpu-btn').disabled = !isHost || localRoomData.players.length >= localRoomData.maxPlayers;
-        }
-        
-        function addCpu() {
-            if (localRoomData.players.length >= localRoomData.maxPlayers) return;
-            const cpuCount = localRoomData.players.filter(p => p.isCPU).length;
-            const newCPU = { 
-                id: `cpu_${Date.now()}`, 
-                nickname: `CPU ${cpuCount + 1}`, 
-                score: 0, 
-                isCPU: true, 
-                hasVoted: true,
-                hasSelectedCharacter: true 
-            };
-            updateFirestore({
-                players: firebase.firestore.FieldValue.arrayUnion(newCPU)
-            });
-        }
-
-        function handleRemoveCpu(e) {
-            if (!e.target.classList.contains('remove-cpu-btn')) return;
-            const playerIdToRemove = e.target.dataset.playerId;
-            const playerToRemove = localRoomData.players.find(p => p.id === playerIdToRemove);
-            if (playerToRemove) {
-                updateFirestore({
-                    players: firebase.firestore.FieldValue.arrayRemove(playerToRemove)
-                });
-            }
-        }
-
-        function startGame() {
-            updateFirestore({ gameState: 'voting', votes: {} });
-        }
-
-        function handleVote(e) {
-            const vote = e.target.dataset.vote;
-            const playerInRoom = localRoomData.players.find(p => p.id === currentUser.id);
-            if(playerInRoom && !playerInRoom.hasVoted){
-                const newVotes = localRoomData.votes || {};
-                if (!newVotes[vote]) newVotes[vote] = [];
-                newVotes[vote].push(currentUser.id);
-
-                const updatedPlayers = localRoomData.players.map(p => {
-                    if (p.id === currentUser.id) {
-                        return { ...p, hasVoted: true };
-                    }
-                    return p;
-                });
-
-                updateFirestore({
-                    votes: newVotes,
-                    players: updatedPlayers
-                });
-            }
-        }
-        
-        function updateVoteUI() {
-            const player = localRoomData.players.find(p => p.id === currentUser.id);
-            const feedback = document.getElementById('vote-feedback');
-            if (player && player.hasVoted) {
-                document.getElementById('vote-options').classList.add('hidden');
-                feedback.textContent = 'Hai votato. In attesa degli altri giocatori...';
-            } else {
-                 document.getElementById('vote-options').classList.remove('hidden');
-                 feedback.textContent = '';
-            }
-        }
-        
-        // --- LOGICA SELEZIONE PERSONAGGIO ---
-        function setupRosterGrid() {
-            const grid = document.getElementById('roster-grid');
-            grid.innerHTML = '';
-            ROSTER.forEach(char => {
-                const card = document.createElement('div');
-                card.className = 'character-card aspect-square rounded-lg overflow-hidden bg-slate-700';
-                card.dataset.charId = char.id;
-                card.innerHTML = `<img src="${char.imageUrl}" alt="${char.name}" class="w-full h-full main-img"><div class="taken-overlay hidden"></div>`;
-                card.addEventListener('click', () => handleCharacterClick(char.id));
-                grid.appendChild(card);
-            });
-        }
-
-        function handleCharacterClick(charId) {
-            const player = localRoomData.players.find(p => p.id === currentUser.id);
-            if (player.hasSelectedCharacter) return;
-
-            const isTaken = localRoomData.players.some(p => p.character && p.character.id === charId);
-            if (isTaken) return;
-
-            tempSelectedCharId = charId;
-            renderCharacterSelectionScreen(); // Re-render to show selection locally
-        }
-
-        function handleCharacterConfirmation() {
-            if (!tempSelectedCharId) return;
-            const updatedPlayers = localRoomData.players.map(p => {
-                if (p.id === currentUser.id) {
-                    return {
-                        ...p,
-                        character: ROSTER.find(c => c.id === tempSelectedCharId),
-                        hasSelectedCharacter: true
-                    };
-                }
-                return p;
-            });
-            tempSelectedCharId = null;
-            updateFirestore({ players: updatedPlayers });
-        }
-
-        function renderCharacterSelectionScreen() {
-            const humanPlayers = localRoomData.players.filter(p => !p.isCPU);
-            const selectedPlayers = humanPlayers.filter(p => p.hasSelectedCharacter);
-            const statusEl = document.getElementById('character-selection-status');
-            statusEl.textContent = `In attesa di ${humanPlayers.length - selectedPlayers.length} giocatori...`;
-
-            const confirmBtn = document.getElementById('confirm-character-btn');
-            const me = localRoomData.players.find(p => p.id === currentUser.id);
-            if(me.hasSelectedCharacter) {
-                confirmBtn.disabled = true;
-                confirmBtn.textContent = "Scelta Confermata!";
-            } else {
-                confirmBtn.disabled = !tempSelectedCharId;
-                confirmBtn.textContent = "Conferma Scelta";
-            }
-
-            const takenCharIds = new Set(localRoomData.players.map(p => p.character?.id).filter(Boolean));
-            document.querySelectorAll('.character-card').forEach(card => {
-                const charId = card.dataset.charId;
-                const overlay = card.querySelector('.taken-overlay');
-                
-                card.classList.remove('selected', 'taken');
-                overlay.classList.add('hidden');
-
-                if (charId === tempSelectedCharId) {
-                    card.classList.add('selected');
-                }
-
-                if (takenCharIds.has(charId)) {
-                    card.classList.add('taken');
-                    const owner = localRoomData.players.find(p => p.character?.id === charId);
-                    overlay.innerHTML = `<img src="${owner.character.imageUrl}" title="${owner.nickname}">`;
-                    overlay.classList.remove('hidden');
-                }
-            });
-        }
-        
-        function startNewGame(gameName) {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const update = {
-                gameState: 'in-game',
-                currentGame: gameName,
-                gameData: null,
-                currentPlayerIndex: Math.floor(Math.random() * localRoomData.players.length)
-            };
-            if (localRoomData.gameMode === 'free-play') {
-                update.players = localRoomData.players.map(p => ({ ...p, score: 0 }));
-            }
-            updateFirestore(update);
-        }
-        
-        function hideIntroOverlay(overlayId, callback) {
-            const introOverlay = document.getElementById(overlayId);
-            introOverlay.style.opacity = '0';
-            setTimeout(() => {
-                introOverlay.classList.add('hidden');
-                if(callback) callback();
-            }, 500); // Durata della transizione CSS
-        }
-        
-        // --- LOGICA MEMORY ---
-        const EMOJI_POOL = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🍎', '🍌', '🍇', '🍓', '🍑', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🌽', '🥕', '🧄', '🧅', '🥔', '🥐', '🥨', '🧀', '🍔', '🍕'];
-        function initializeMemoryGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = { type: 'memory', status: 'intro' };
-            updateFirestore({ gameData });
-        }
-        function startMemoryGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            
-            const numPairs = 24; // Per una griglia 6x8
-            const cardPool = [...EMOJI_POOL].sort(() => 0.5 - Math.random()).slice(0, numPairs);
-            let cards = [...cardPool, ...cardPool];
-            cards.sort(() => 0.5 - Math.random());
-
-            const newGameData = {
-                ...localRoomData.gameData,
-                status: 'playing',
-                cpuMemory: {},
-                board: cards.map((emoji, index) => ({
-                    id: index,
-                    charId: emoji,
-                    isFlipped: false,
-                    isMatched: false,
-                })),
-                flippedCards: [],
-                pairsFound: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
-            };
-            updateFirestore({ gameData: newGameData });
-        }
-        function renderMemoryGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData || !gameData.board) return;
-
-            const board = document.getElementById('memory-board');
-            board.innerHTML = '';
-            const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
-            document.getElementById('current-player-turn').textContent = currentPlayer.nickname;
-            document.getElementById('current-player-turn').style.color = currentPlayer.isCPU ? '#f87171' : '#67e8f9';
-            
-            const tempScores = localRoomData.players.map(p => ({...p, score: gameData.pairsFound[p.id] || 0 }));
-            updateLeaderboard(document.getElementById('leaderboard'), tempScores, currentPlayer.id);
-
-            const cardCount = gameData.board.length;
-            let cols = 8; // Griglia 8x6
-            board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-            
-            gameData.board.forEach(cardData => {
-                const cardContainer = document.createElement('div');
-                cardContainer.className = 'card-container aspect-square';
-                const cardEl = document.createElement('div');
-                cardEl.className = 'card';
-                cardEl.dataset.cardId = cardData.id;
-
-                if (cardData.isFlipped) cardEl.classList.add('flipped');
-                if (cardData.isMatched) cardEl.classList.add('matched');
-
-                cardEl.innerHTML = `
-                    <div class="back bg-slate-700 hover:bg-slate-600 cursor-pointer"></div>
-                    <div class="front bg-slate-900 flex items-center justify-center p-1">${cardData.charId}</div>
-                `;
-
-                if (!cardData.isFlipped && !cardData.isMatched) {
-                    cardEl.addEventListener('click', () => handleCardClick(cardData.id));
-                }
-                cardContainer.appendChild(cardEl);
-                board.appendChild(cardContainer);
-            });
-        }
-        function handleCardClick(cardId) {
-            const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
-            if (isActionLocked || currentPlayer.id !== currentUser.id) return;
-
-            const card = localRoomData.gameData.board.find(c => c.id === cardId);
-            if (card.isFlipped || card.isMatched) return;
-
-            const newBoard = [...localRoomData.gameData.board];
-            newBoard[cardId].isFlipped = true;
-            const newFlippedCards = [...localRoomData.gameData.flippedCards, newBoard[cardId]];
-
-            isActionLocked = true;
-            if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
-            
-            const update = { 'gameData.board': newBoard, 'gameData.flippedCards': newFlippedCards };
-            updateFirestore(update);
-
-            if (newFlippedCards.length === 2) {
-                setTimeout(checkMatch, 1000);
-            } else {
-                isActionLocked = false;
-            }
-        }
-        function checkMatch() {
-            if (localRoomData.hostId !== currentUser.id) return;
-
-            const gameData = localRoomData.gameData;
-            const [card1, card2] = gameData.flippedCards;
-            const currentPlayerId = localRoomData.players[localRoomData.currentPlayerIndex].id;
-            
-            let newBoard = [...gameData.board];
-            let newPairsFound = { ...gameData.pairsFound };
-            let nextPlayerIndex = localRoomData.currentPlayerIndex;
-            
-            if (card1.charId === card2.charId) {
-                newBoard.find(c => c.id === card1.id).isMatched = true;
-                newBoard.find(c => c.id === card2.id).isMatched = true;
-                newPairsFound[currentPlayerId]++;
-                if (audioSynth) audioSynth.triggerAttackRelease('G4', '8n');
-            } else {
-                newBoard.find(c => c.id === card1.id).isFlipped = false;
-                newBoard.find(c => c.id === card2.id).isFlipped = false;
-                if (audioSynth) audioSynth.triggerAttackRelease('C3', '8n');
-                nextPlayerIndex = (localRoomData.currentPlayerIndex + 1) % localRoomData.players.length;
-            }
-            
-            const allMatched = newBoard.every(c => c.isMatched);
-            if (allMatched) {
-                endMemoryGame();
-                return;
-            }
-
-            updateFirestore({
-                'gameData.board': newBoard,
-                'gameData.flippedCards': [],
-                'gameData.pairsFound': newPairsFound,
-                'currentPlayerIndex': nextPlayerIndex
-            });
-        }
-        function endMemoryGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            if (localRoomData.gameMode === 'championship') {
-                const playersWithTempScore = localRoomData.players.map(p => ({
-                    ...p,
-                    tempScore: localRoomData.gameData.pairsFound[p.id] || 0
-                }));
-                const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
-                awardChampionshipPoints(sortedPlayers);
-            }
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState });
-        }
-
-        // --- LOGICA MORRA CINESE ---
-        function initializeRPSGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            updateFirestore({ gameData: { type: 'rps', status: 'intro' } });
-        }
-        function startRPSGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = {
-                ...localRoomData.gameData,
-                status: 'playing',
-                log: [],
-                schedule: generateRoundRobinSchedule(localRoomData.players),
-                matchupIndex: 0,
-                matchupChoices: {},
-                tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
-            };
-            updateFirestore({ gameData });
-        }
-        function generateRoundRobinSchedule(players) {
-            const schedule = [];
-            for (let i = 0; i < players.length; i++) {
-                for (let j = i + 1; j < players.length; j++) {
-                    schedule.push([players[i].id, players[j].id]);
-                }
-            }
-            return schedule.sort(() => Math.random() - 0.5);
-        }
-        function renderRPSGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData || gameData.status !== 'playing') return;
-            
-            const matchupArea = document.getElementById('rps-matchup-area');
-            const controlsArea = document.getElementById('rps-player-controls');
-            const logArea = document.getElementById('rps-log');
-            
-            matchupArea.innerHTML = '';
-            controlsArea.innerHTML = '';
-            logArea.innerHTML = gameData.log.join('');
-            
-            const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
-            updateLeaderboard(document.getElementById('rps-leaderboard'), tempScorePlayers);
-            
-            if (gameData.matchupIndex >= gameData.schedule.length) {
-                return; // Host will end the game
-            }
-
-            const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
-            const player1 = localRoomData.players.find(p => p.id === p1Id);
-            const player2 = localRoomData.players.find(p => p.id === p2Id);
-
-            matchupArea.innerHTML = `
-                <div class="flex justify-around items-center">
-                    <div class="text-center w-1/3">
-                        <img src="${player1.character.imageUrl}" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-blue-400">
-                        <h3 class="text-xl font-bold mt-2">${player1.nickname}</h3>
-                        <div id="p1-choice-display" class="text-5xl mt-4 h-16">?</div>
-                    </div>
-                    <div class="text-4xl font-black text-red-400">VS</div>
-                    <div class="text-center w-1/3">
-                        <img src="${player2.character.imageUrl}" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-green-400">
-                        <h3 class="text-xl font-bold mt-2">${player2.nickname}</h3>
-                        <div id="p2-choice-display" class="text-5xl mt-4 h-16">?</div>
-                    </div>
-                </div>`;
-            
-            const isUserInMatch = currentUser.id === p1Id || currentUser.id === p2Id;
-            if (isUserInMatch && !gameData.matchupChoices[currentUser.id]) {
-                controlsArea.innerHTML = `
-                    <p class="mb-4 text-lg text-cyan-300">Fai la tua scelta!</p>
-                    <div class="flex justify-center gap-4">
-                        <button onclick="handleRPSChoice('rock')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✊</button>
-                        <button onclick="handleRPSChoice('paper')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✋</button>
-                        <button onclick="handleRPSChoice('scissors')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✌️</button>
-                    </div>`;
-            }
-        }
-        function handleRPSChoice(choice) {
-            const gameData = localRoomData.gameData;
-            if (isActionLocked || gameData.matchupChoices[currentUser.id]) return;
-            isActionLocked = true;
-            const newChoices = { ...gameData.matchupChoices, [currentUser.id]: choice };
-            updateFirestore({ 'gameData.matchupChoices': newChoices });
-        }
-        function endRPSGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            if (localRoomData.gameMode === 'championship') {
-                const playersWithTempScore = localRoomData.players.map(p => ({
-                    ...p,
-                    tempScore: localRoomData.gameData.tempScores[p.id] || 0
-                }));
-                const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
-                awardChampionshipPoints(sortedPlayers);
-            } else {
-                 localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
-            }
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-
-        // --- LOGICA DADO FORTUNATO (REFACTORED) ---
-        const HUD_COLORS = ["border-red-500", "border-blue-500", "border-green-500", "border-yellow-500", "border-purple-500", "border-pink-500", "border-indigo-500", "border-teal-500"];
-        function initializeLuckyDiceGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            updateFirestore({ gameData: { type: 'lucky-dice', status: 'intro' } });
-        }
-        function startLuckyDiceGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = {
-                ...localRoomData.gameData,
-                status: 'playing',
-                mainTimer: 180,
-                playerProgress: {}
-            };
-            const shuffledColors = [...HUD_COLORS].sort(() => 0.5 - Math.random());
-            localRoomData.players.forEach((p, index) => {
-                gameData.playerProgress[p.id] = {
-                    needed: [1, 2, 3, 4, 5, 6],
-                    collectedCount: 0,
-                    lastCollectionTime: 0,
-                    diceValue: '🎲',
-                    canRoll: true,
-                    hudColor: shuffledColors[index % shuffledColors.length]
-                };
-            });
-            updateFirestore({ gameData });
-        }
-        function handlePlayerRoll(playerId) {
-            const gameData = localRoomData.gameData;
-            const progress = gameData.playerProgress[playerId];
-            if (!progress || !progress.canRoll || gameData.status !== 'playing' || progress.needed.length === 0) return;
-
-            const roll = Math.floor(Math.random() * 6) + 1;
-            if(tickSynth) tickSynth.triggerAttackRelease("C4", "8n");
-            
-            progress.canRoll = false;
-            progress.diceValue = roll;
-            
-            if (progress.needed.includes(roll)) {
-                progress.needed = progress.needed.filter(n => n !== roll);
-                progress.collectedCount++;
-                progress.lastCollectionTime = gameData.mainTimer;
-                if(goodTapSound) goodTapSound.triggerAttackRelease("G5", "8n");
-            }
-            
-            updateFirestore({ [`gameData.playerProgress.${playerId}`]: progress });
-
-            setTimeout(() => {
-                const currentProgress = localRoomData.gameData.playerProgress[playerId];
-                if (currentProgress) {
-                    currentProgress.canRoll = true;
-                    updateFirestore({ [`gameData.playerProgress.${playerId}`]: currentProgress });
-                }
-            }, 3000);
-        }
-        function renderLuckyDiceGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData.playerProgress) return;
-            
-            const mainTimerEl = document.getElementById('lucky-dice-main-timer');
-            if(mainTimerEl) mainTimerEl.textContent = `0${Math.floor(gameData.mainTimer / 60)}:${String(gameData.mainTimer % 60).padStart(2, '0')}`;
-            
-            const playersArea = document.getElementById('lucky-dice-players-area');
-            playersArea.innerHTML = '';
-            localRoomData.players.forEach(player => {
-                const progress = gameData.playerProgress[player.id];
-                const card = document.createElement('div');
-                card.id = `player-dice-card-${player.id}`;
-                card.className = `panel p-4 rounded-lg flex flex-col items-center border-4 ${progress.hudColor}`;
-                
-                let numbersHTML = '';
-                for (let i = 1; i <= 6; i++) {
-                    const isCollected = !progress.needed.includes(i);
-                    numbersHTML += `<div data-number="${i}" class="dice-number w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg ${isCollected ? 'collected' : ''}">${i}</div>`;
-                }
-
-                let buttonHTML = '';
-                if (player.id === currentUser.id) {
-                    let buttonText = 'Lancia!';
-                    let disabled = !progress.canRoll;
-                    if (progress.needed.length === 0) {
-                        buttonText = 'Completato!';
-                        disabled = true;
-                    } else if (!progress.canRoll) {
-                        buttonText = '...';
-                    }
-                    buttonHTML = `<button onclick="handlePlayerRoll('${player.id}')" class="btn-primary font-bold py-2 px-4 rounded-lg mt-4 w-full" ${disabled ? 'disabled' : ''}>${buttonText}</button>`;
-                }
-
-                card.innerHTML = `
-                    <img src="${player.character.imageUrl}" class="w-20 h-20 rounded-full object-cover">
-                    <span class="font-bold mt-2">${player.nickname}</span>
-                    <div class="flex justify-center gap-1.5 mt-2">
-                        ${numbersHTML}
-                    </div>
-                    <div class="player-dice-display text-7xl font-black my-2 h-24 flex items-center justify-center">${progress.diceValue}</div>
-                    ${buttonHTML}
-                `;
-                playersArea.appendChild(card);
-            });
-
-            const leaderboardEl = document.getElementById('lucky-dice-leaderboard');
-            leaderboardEl.innerHTML = '';
-            const sortedPlayers = [...localRoomData.players].sort((a, b) => {
-                const progressA = gameData.playerProgress[a.id];
-                const progressB = gameData.playerProgress[b.id];
-                if (progressA.collectedCount !== progressB.collectedCount) {
-                    return progressB.collectedCount - progressA.collectedCount;
-                }
-                return progressB.lastCollectionTime - progressA.lastCollectionTime;
-            });
-
-            sortedPlayers.forEach((p, index) => {
-                const rankIcon = ['🥇', '🥈', '🥉'][index] || `<span class="text-slate-400">${index + 1}</span>`;
-                const playerDiv = document.createElement('div');
-                playerDiv.className = 'flex items-center gap-3 p-2 bg-slate-900/50 rounded-lg';
-                playerDiv.innerHTML = `
-                    <span class="font-bold text-xl w-8 text-center">${rankIcon}</span>
-                    <img src="${p.character.imageUrl}" class="w-10 h-10 rounded-full object-cover">
-                    <span class="font-semibold">${p.nickname}</span>
-                `;
-                leaderboardEl.appendChild(playerDiv);
-            });
-        }
-        function endLuckyDiceGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            
-            const sortedPlayers = [...localRoomData.players].sort((a, b) => {
-                const progressA = gameData.playerProgress[a.id];
-                const progressB = gameData.playerProgress[b.id];
-                if (progressA.collectedCount !== progressB.collectedCount) {
-                    return progressB.collectedCount - progressA.collectedCount;
-                }
-                return progressB.lastCollectionTime - progressA.lastCollectionTime;
-            });
-            
-            if (localRoomData.gameMode === 'championship') {
-                awardChampionshipPoints(sortedPlayers);
-            } else {
-                sortedPlayers.forEach((player, index) => {
-                    player.score = gameData.playerProgress[player.id].collectedCount;
-                });
-            }
-
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-        
-        // --- LOGICA BOMBA (REFACTORED) ---
-        function initializeBombGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            updateFirestore({ gameData: { type: 'bomb', status: 'intro' } });
-        }
-        function startBombGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = {
-                ...localRoomData.gameData,
-                status: 'playing',
-                activePlayerIds: localRoomData.players.map(p => p.id),
-                eliminatedPlayerIds: [],
-                bombHolderIndex: Math.floor(Math.random() * localRoomData.players.length)
-            };
-            updateFirestore({ gameData });
-        }
-        function handlePassBomb() {
-            const gameData = localRoomData.gameData;
-            const currentPlayerId = gameData.activePlayerIds[gameData.bombHolderIndex];
-            if (isActionLocked || currentUser.id !== currentPlayerId) return;
-
-            isActionLocked = true;
-            const nextIndex = (gameData.bombHolderIndex + 1) % gameData.activePlayerIds.length;
-            updateFirestore({ 'gameData.bombHolderIndex': nextIndex });
-        }
-        function renderBombGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData || gameData.status !== 'playing') return;
-
-            document.getElementById('bomb-title').textContent = `Bomba - ${gameData.activePlayerIds.length} giocatori rimasti`;
-            if (gameData.activePlayerIds.length <= 1) {
-                document.getElementById('bomb-title').textContent = 'Bomba - Vincitore!';
-            }
-
-            const circle = document.getElementById('bomb-players-circle');
-            circle.innerHTML = '';
-            const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
-            const angleStep = 360 / activePlayers.length;
-            const bombHolderId = gameData.activePlayerIds[gameData.bombHolderIndex];
-
-            activePlayers.forEach((player, index) => {
-                const angle = angleStep * index;
-                const x = 50 + 45 * Math.cos(angle * Math.PI / 180);
-                const y = 50 + 45 * Math.sin(angle * Math.PI / 180);
-                
-                const playerEl = document.createElement('div');
-                playerEl.className = 'bomb-player relative';
-                playerEl.style.left = `${x}%`;
-                playerEl.style.top = `${y}%`;
-
-                let bombHTML = '';
-                if (player.id === bombHolderId) {
-                    playerEl.classList.add('has-bomb');
-                    bombHTML = '<span class="absolute -top-4 -right-4 text-4xl animate-pulse">💣</span>';
-                }
-
-                playerEl.innerHTML = `
-                    ${bombHTML}
-                    <img src="${player.character.imageUrl}" class="w-16 h-16 rounded-full object-cover">
-                    <div class="bg-black/50 p-1 rounded -mt-2">${player.nickname}</div>
-                `;
-                circle.appendChild(playerEl);
-            });
-
-            const eliminatedPlayersArea = document.getElementById('bomb-eliminated-players');
-            eliminatedPlayersArea.innerHTML = '';
-            gameData.eliminatedPlayerIds.forEach(playerId => {
-                const player = localRoomData.players.find(p => p.id === playerId);
-                eliminatedPlayersArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover grayscale opacity-50" title="Eliminato: ${player.nickname}">`;
-            });
-            
-            document.getElementById('pass-bomb-btn').disabled = (currentUser.id !== bombHolderId || isActionLocked);
-        }
-        function endBombGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            
-            const winnerId = gameData.activePlayerIds[0];
-            
-            if (localRoomData.gameMode === 'championship') {
-                const finalRanking = [
-                    ...localRoomData.players.filter(p => p.id === winnerId),
-                    ...[...gameData.eliminatedPlayerIds].reverse().map(id => localRoomData.players.find(p => p.id === id))
-                ];
-                awardChampionshipPoints(finalRanking);
-            } else {
-                localRoomData.players.forEach(p => {
-                    p.score = (p.id === winnerId) ? 1 : 0;
-                });
-            }
-            
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-        
-        // --- LOGICA SUCCOFONO (REFACTORED) ---
-        const JUICE_CLICK_FILL = 2.5;
-        const JUICE_PENALTY_DRAIN = 5;
-        const MAX_JUICE_LEVEL = 100;
-        const JUICE_COLORS = ["#ff6347", "#90ee90", "#add8e6", "#ffd700", "#dda0dd", "#ff7f50", "#00ced1", "#ffc0cb"];
-
-        function initializeSuccofonoGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            updateFirestore({ gameData: { type: 'succofono', status: 'intro' } });
-        }
-        function startSuccofonoGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = {
-                ...localRoomData.gameData,
-                status: 'playing',
-                light: 'red',
-                players: {}
-            };
-            const shuffledColors = [...JUICE_COLORS].sort(() => 0.5 - Math.random());
-            localRoomData.players.forEach((p, index) => {
-                gameData.players[p.id] = { 
-                    juice: 0, 
-                    isFinished: false,
-                    finishTime: null,
-                    juiceColor: shuffledColors[index % shuffledColors.length]
-                };
-            });
-            updateFirestore({ gameData });
-        }
-        function handleDrinkPress(playerId = currentUser.id) {
-            const gameData = localRoomData.gameData;
-            const pData = gameData.players[playerId];
-            if (!pData || pData.isFinished || gameData.status !== 'playing') return;
-
-            let newJuice = pData.juice;
-            if (gameData.light === 'green') {
-                newJuice = Math.min(MAX_JUICE_LEVEL, pData.juice + JUICE_CLICK_FILL);
-                if(drinkSynth) drinkSynth.triggerAttackRelease('C4', '16n');
-            } else { // Red light
-                newJuice = Math.max(0, pData.juice - JUICE_PENALTY_DRAIN);
-                if(badTapSound) badTapSound.triggerAttackRelease('A2', '8n');
-            }
-            
-            const update = { [`gameData.players.${playerId}.juice`]: newJuice };
-            if (newJuice >= MAX_JUICE_LEVEL) {
-                update[`gameData.players.${playerId}.isFinished`] = true;
-                update[`gameData.players.${playerId}.finishTime`] = Date.now();
-            }
-            updateFirestore(update);
-        }
-        function renderSuccofonoGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData || !gameData.players) return;
-            
-            document.getElementById('succofono-traffic-light').className = `traffic-light ${gameData.light}`;
-            
-            const playersArea = document.getElementById('succofono-players-area');
-            playersArea.innerHTML = '';
-            localRoomData.players.forEach(p => {
-                const pData = gameData.players[p.id];
-                const playerContainer = document.createElement('div');
-                playerContainer.className = 'player-container panel p-2 rounded-lg';
-                if (pData.isFinished) playerContainer.classList.add('eliminated');
-                
-                playerContainer.innerHTML = `
-                     <img src="${p.character.imageUrl}" class="w-16 h-16 rounded-full object-cover mb-2">
-                     <span class="font-bold text-sm mb-2">${p.nickname}</span>
-                     <div class="juice-glass">
-                         <div class="juice-fill" style="height: ${pData.juice}%; background-color: ${pData.juiceColor};"></div>
-                     </div>
-                `;
-                playersArea.appendChild(playerContainer);
-            });
-        }
-        function endSuccofonoGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-
-            const sortedPlayers = [...localRoomData.players].sort((a, b) => {
-                const pA = gameData.players[a.id];
-                const pB = gameData.players[b.id];
-                if (pA.isFinished && !pB.isFinished) return -1;
-                if (!pA.isFinished && pB.isFinished) return 1;
-                if (pA.isFinished && pB.isFinished) return pA.finishTime - pB.finishTime;
-                return pB.juice - pA.juice;
-            });
-            
-            if (localRoomData.gameMode === 'championship') {
-                awardChampionshipPoints(sortedPlayers);
-            } else {
-                sortedPlayers.forEach((player, index) => {
-                    player.score = Math.max(0, (localRoomData.players.length - index - 1) * 2);
-                });
-            }
-
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-        
-        // --- LOGICA ICONA MISTERIOSA ---
-        function initializeHideAndSeekGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-             hideIntroOverlay('hns-intro-overlay', () => {
-                const gameData = { 
-                    type: 'hide-and-seek', 
-                    status: 'round-start',
-                    seekerOrder: [...localRoomData.players].sort(() => Math.random() - 0.5).map(p => p.id),
-                    currentSeekerIndex: 0,
-                    round: 0,
-                    tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
-                };
-                updateFirestore({ gameData });
-             });
-        }
-        function startHnsRound() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            const newRoundData = {
-                ...gameData,
-                round: gameData.round + 1,
-                status: 'hiding',
-                seekerId: gameData.seekerOrder[gameData.currentSeekerIndex],
-                hiders: localRoomData.players.filter(p => p.id !== gameData.seekerOrder[gameData.currentSeekerIndex]).map(p => ({ id: p.id, spotId: null, found: false })),
-                hidingSpots: [],
-                timer: 15,
-                attemptsLeft: 5
-            };
-
-            const numSpots = 7;
-            for(let i = 0; i < numSpots; i++) {
-                const angle = (i / numSpots) * 2 * Math.PI;
-                newRoundData.hidingSpots.push({
-                    id: i,
-                    x: 50 + 35 * Math.cos(angle),
-                    y: 50 + 35 * Math.sin(angle),
-                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
-                    clicked: false
-                });
-            }
-            updateFirestore({ gameData: newRoundData });
-        }
-        function handleHnsSpotClick(spotId) {
-            const gameData = localRoomData.gameData;
-            const me = localRoomData.players.find(p => p.id === currentUser.id);
-
-            if (gameData.status === 'hiding' && me.id !== gameData.seekerId) {
-                const hidersCopy = [...gameData.hiders];
-                const myHiderData = hidersCopy.find(h => h.id === me.id);
-                myHiderData.spotId = spotId;
-                if(hideSound) hideSound.triggerAttackRelease("C4", "8n");
-                updateFirestore({ 'gameData.hiders': hidersCopy });
-            } else if (gameData.status === 'seeking' && me.id === gameData.seekerId) {
-                const spot = gameData.hidingSpots.find(s => s.id === spotId);
-                if (spot.clicked) return;
-
-                const newSpots = [...gameData.hidingSpots];
-                newSpots[spotId].clicked = true;
-                
-                const hidersCopy = [...gameData.hiders];
-                const hiderInSpot = hidersCopy.find(h => h.spotId === spotId && !h.found);
-                
-                const newTempScores = { ...gameData.tempScores };
-
-                if (hiderInSpot) {
-                    hiderInSpot.found = true;
-                    if(foundSound) foundSound.triggerAttackRelease("G5", "4n");
-                    newTempScores[gameData.seekerId]++;
-                } else {
-                    if(badTapSound) badTapSound.triggerAttackRelease("C3", "8n");
-                }
-                
-                updateFirestore({
-                    'gameData.hidingSpots': newSpots,
-                    'gameData.attemptsLeft': gameData.attemptsLeft - 1,
-                    'gameData.hiders': hidersCopy,
-                    'gameData.tempScores': newTempScores
-                });
-            }
-        }
-        function endHnsRound() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            
-            const newTempScores = { ...gameData.tempScores };
-            gameData.hiders.forEach(h => {
-                if (!h.found) {
-                    newTempScores[h.id] += 2;
-                }
-            });
-
-            const nextSeekerIndex = gameData.currentSeekerIndex + 1;
-            if (nextSeekerIndex >= localRoomData.players.length) {
-                updateFirestore({ 'gameData.status': 'finished', 'gameData.tempScores': newTempScores });
-            } else {
-                updateFirestore({ 
-                    'gameData.status': 'round-start', 
-                    'gameData.currentSeekerIndex': nextSeekerIndex,
-                    'gameData.tempScores': newTempScores
-                });
-            }
-        }
-        function renderHideAndSeekGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData) return;
-
-            const arena = document.getElementById('hns-arena');
-            const statusText = document.getElementById('hns-status-text');
-            const capturedArea = document.getElementById('hns-captured-area');
-            arena.innerHTML = '';
-            capturedArea.innerHTML = '';
-
-            const me = localRoomData.players.find(p => p.id === currentUser.id);
-            const isSeeker = gameData.seekerId && me.id === gameData.seekerId;
-            const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
-            
-            if (gameData.status === 'hiding') {
-                statusText.textContent = isSeeker ? `Tu sei il cercatore! Attendi...` : `Nasconditi! Tempo: ${gameData.timer}s`;
-            } else if (gameData.status === 'seeking') {
-                const hidersLeft = gameData.hiders ? gameData.hiders.filter(h => !h.found).length : 0;
-                statusText.textContent = isSeeker ? `Trovali! ${hidersLeft} rimasti. Tentativi: ${gameData.attemptsLeft}` : `Nasconditi! ${seeker.nickname} sta cercando...`;
-            } else if (gameData.status === 'round-reveal') {
-                const notFoundHiders = gameData.hiders.filter(h => !h.found);
-                if (notFoundHiders.length > 0) {
-                    const names = notFoundHiders.map(h => localRoomData.players.find(p => p.id === h.id).nickname).join(', ');
-                    statusText.textContent = `Salvi: ${names}!`;
-                } else {
-                    statusText.textContent = 'Tutti trovati!';
-                }
-            }
-
-            // Render Seeker in the middle
-            if (seeker) {
-                const seekerEl = document.createElement('div');
-                seekerEl.className = 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center';
-                seekerEl.innerHTML = `<img src="${seeker.character.imageUrl}" class="w-24 h-24 rounded-full object-cover border-4 border-red-500"><div class="bg-red-600 text-white font-bold p-1 rounded mt-1">Cercatore</div>`;
-                arena.appendChild(seekerEl);
-            }
-
-            if (gameData.hidingSpots) {
-                gameData.hidingSpots.forEach(spot => {
-                    if (spot.clicked && gameData.status !== 'round-reveal') return; 
-                    const spotEl = document.createElement('div');
-                    spotEl.className = 'hns-icon';
-                    spotEl.style.left = `calc(${spot.x}% - 40px)`;
-                    spotEl.style.top = `calc(${spot.y}% - 40px)`;
-                    spotEl.style.backgroundColor = spot.color;
-                    
-                    const myChoice = gameData.hiders.find(h => h.id === me.id)?.spotId;
-                    if (gameData.status === 'hiding' && !isSeeker) {
-                        spotEl.classList.add('hiding-spot');
-                        if (myChoice === spot.id) spotEl.classList.add('selected-spot');
-                        spotEl.onclick = () => handleHnsSpotClick(spot.id);
-                    } else if (gameData.status === 'seeking' && isSeeker) {
-                        spotEl.classList.add('hiding-spot');
-                        spotEl.onclick = () => handleHnsSpotClick(spot.id);
-                    }
-                    
-                    const hidersInSpot = gameData.hiders.filter(h => h.spotId === spot.id);
-                    if (gameData.status === 'hiding' && !isSeeker) {
-                        hidersInSpot.forEach(h => {
-                            const player = localRoomData.players.find(p => p.id === h.id);
-                            spotEl.innerHTML += `<img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover opacity-50">`;
-                        });
-                    }
-                    
-                    if (hidersInSpot.length > 0 && (hidersInSpot.some(h => h.found) || gameData.status === 'round-reveal')) {
-                        spotEl.classList.add('disappeared');
-                        hidersInSpot.forEach(hider => {
-                            const player = localRoomData.players.find(p => p.id === hider.id);
-                            const avatarEl = document.createElement('img');
-                            avatarEl.src = player.character.imageUrl;
-                            avatarEl.className = 'hns-player-avatar revealed';
-                            avatarEl.style.left = `calc(${spot.x}% - 25px)`;
-                            avatarEl.style.top = `calc(${spot.y}% - 25px)`;
-                            arena.appendChild(avatarEl);
-                        });
-                    }
-                    
-                    arena.appendChild(spotEl);
-                });
-            }
-
-            if (gameData.hiders) {
-                const foundHiders = gameData.hiders.filter(h => h.found);
-                foundHiders.forEach(h => {
-                    const player = localRoomData.players.find(p => p.id === h.id);
-                    capturedArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-10 h-10 rounded-full object-cover" title="${player.nickname}">`;
-                });
-            }
-            const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
-            updateLeaderboard(document.getElementById('hns-leaderboard'), tempScorePlayers);
-        }
-        function endHnsGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            
-            if (localRoomData.gameMode === 'championship') {
-                const playersWithTempScore = localRoomData.players.map(p => ({
-                    ...p,
-                    tempScore: localRoomData.gameData.tempScores[p.id] || 0
-                }));
-                const sortedPlayers = playersWithTempScore.sort((a,b) => b.tempScore - a.tempScore);
-                awardChampionshipPoints(sortedPlayers);
-            } else {
-                localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
-            }
-
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-        
-        // --- LOGICA TOCCO AL VOLO ---
-        const TAG_ITEMS = {
-            positive: [ { id: 'star', url: 'https://em-content.zobj.net/source/apple/354/star_2b50.png', score: 1 }, { id: 'heart', url: 'https://em-content.zobj.net/source/apple/354/red-heart_2764-fe0f.png', score: 1 } ],
-            negative: [ { id: 'bomb', url: 'https://em-content.zobj.net/source/apple/354/bomb_1f4a3.png', score: -1 }, { id: 'skull', url: 'https://em-content.zobj.net/source/apple/354/skull_1f480.png', score: -1 } ],
-        };
-        function initializeTouchAndGoGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            updateFirestore({ gameData: { type: 'touch-and-go', status: 'intro' } });
-        }
-        function startTouchAndGoGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-             const gameData = {
-                ...localRoomData.gameData,
-                status: 'playing',
-                timer: 60,
-                tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
-             };
-             updateFirestore({ gameData });
-        }
-        function populateTagLegend() {
-            const posLegend = document.getElementById('tag-positive-legend');
-            const negLegend = document.getElementById('tag-negative-legend');
-            posLegend.innerHTML = TAG_ITEMS.positive.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
-            negLegend.innerHTML = TAG_ITEMS.negative.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
-        }
-        function updateTouchAndGoGame(source) {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            if(source === 'timer') {
-                const newTimer = gameData.timer - 1;
-                if (newTimer <= 0) {
-                    endTouchAndGoGame();
-                } else {
-                    updateFirestore({ 'gameData.timer': newTimer });
-                }
-            }
-        }
-        function spawnTagItem() {
-            // Questa funzione ora è solo per l'host
-            if (localRoomData.hostId !== currentUser.id) return;
-
-            const isPositive = Math.random() > 0.3;
-            const itemType = isPositive ? 'positive' : 'negative';
-            const itemData = TAG_ITEMS[itemType][Math.floor(Math.random() * TAG_ITEMS[itemType].length)];
-            
-            const newItem = {
-                id: `item_${Date.now()}_${Math.random()}`,
-                ...itemData,
-                x: Math.random() * 90,
-                y: Math.random() * 90
-            };
-            
-            updateFirestore({
-                'gameData.items': firebase.firestore.FieldValue.arrayUnion(newItem)
-            });
-
-            setTimeout(() => {
-                updateFirestore({
-                    'gameData.items': firebase.firestore.FieldValue.arrayRemove(newItem)
-                });
-            }, 4000 + Math.random() * 2000);
-        }
-        function handleTagItemClick(itemId) {
-            const gameData = localRoomData.gameData;
-            const item = gameData.items.find(i => i.id === itemId);
-            if (!item) return;
-
-            const score = item.score;
-            const newTempScores = { ...gameData.tempScores };
-            newTempScores[currentUser.id] = (newTempScores[currentUser.id] || 0) + score;
-
-            if(score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('C5', '8n');
-            if(score < 0 && badTapSound) badTapSound.triggerAttackRelease('C3', '8n');
-            
-            const newItems = gameData.items.filter(i => i.id !== itemId);
-            updateFirestore({ 
-                'gameData.tempScores': newTempScores,
-                'gameData.items': newItems
-            });
-        }
-        function renderTouchAndGoGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData) return;
-            document.getElementById('tag-timer').textContent = `00:${String(gameData.timer || 0).padStart(2, '0')}`;
-            const userScore = gameData.tempScores[currentUser.id] || 0;
-            document.getElementById('tag-player-score').textContent = userScore;
-            
-            const arena = document.getElementById('tag-arena');
-            arena.innerHTML = '';
-            if (gameData.items) {
-                gameData.items.forEach(item => {
-                    const itemEl = document.createElement('img');
-                    itemEl.src = item.url;
-                    itemEl.className = `tag-item ${item.score > 0 ? 'positive' : 'negative'}`;
-                    itemEl.style.left = `${item.x}%`;
-                    itemEl.style.top = `${item.y}%`;
-                    itemEl.onclick = () => handleTagItemClick(item.id);
-                    arena.appendChild(itemEl);
-                });
-            }
-
-            const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
-            updateLeaderboard(document.getElementById('tag-leaderboard'), tempScorePlayers);
-        }
-        function endTouchAndGoGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            
-            const sortedPlayers = [...localRoomData.players].sort((a,b) => (gameData.tempScores[b.id] || 0) - (gameData.tempScores[a.id] || 0));
-
-            if (localRoomData.gameMode === 'championship') {
-                awardChampionshipPoints(sortedPlayers);
-            } else {
-                localRoomData.players.forEach(p => p.score = gameData.tempScores[p.id] || 0);
-            }
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-
-        // --- LOGICA PORTA DELLA MORTE ---
-        const DOOR_COLORS = ["bg-red-800", "bg-blue-800", "bg-green-800", "bg-yellow-800", "bg-purple-800", "bg-pink-800", "bg-indigo-800", "bg-teal-800", "bg-gray-800", "bg-orange-800", "bg-lime-800", "bg-cyan-800", "bg-fuchsia-800", "bg-rose-800"];
-        
-        function initializeDeathDoorGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = {
-                type: 'death-door', status: 'intro', round: 0,
-                activePlayerIds: localRoomData.players.map(p => p.id),
-                eliminatedPlayerIds: [], doors: [], choices: {}, timer: 15,
-            };
-            updateFirestore({ gameData });
-        }
-        function startDeathDoorRound() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            
-            const newRoundData = {
-                ...gameData,
-                round: gameData.round + 1,
-                status: 'choosing',
-                choices: {},
-                timer: 15,
-                doors: []
-            };
-
-            const numDoors = gameData.activePlayerIds.length;
-            const cursedDoorIndex = Math.floor(Math.random() * numDoors);
-            const shuffledColors = [...DOOR_COLORS].sort(() => 0.5 - Math.random());
-            for (let i = 0; i < numDoors; i++) {
-                newRoundData.doors.push({
-                    id: i, isCursed: i === cursedDoorIndex, isOpen: false,
-                    chosenBy: null, color: shuffledColors[i]
-                });
-            }
-            updateFirestore({ gameData: newRoundData });
-        }
-        function handleDoorClick(doorId) {
-            const gameData = localRoomData.gameData;
-            if (isActionLocked || gameData.status !== 'choosing' || gameData.choices[currentUser.id] !== undefined) return;
-            
-            const door = gameData.doors.find(d => d.id === doorId);
-            if (door.chosenBy) {
-                showModal("Questa porta è già stata scelta!"); return;
-            }
-            
-            isActionLocked = true;
-            updateFirestore({ [`gameData.choices.${currentUser.id}`]: doorId });
-        }
-        function renderDeathDoorGame() {
-            const gameData = localRoomData.gameData;
-            if (!gameData) return;
-
-            const gameContentEl = document.getElementById('dd-game-content');
-            document.getElementById('dd-round-title').textContent = `Round ${gameData.round}`;
-            document.getElementById('dd-timer').textContent = gameData.timer;
-            const statusText = document.getElementById('dd-status-text');
-            const doorsArea = document.getElementById('dd-doors-area');
-            const eliminatedArea = document.getElementById('dd-eliminated-area');
-            
-            doorsArea.innerHTML = '';
-            eliminatedArea.innerHTML = '';
-            gameContentEl.querySelectorAll('.dd-player-avatar').forEach(el => el.remove());
-
-            switch(gameData.status) {
-                case 'choosing': statusText.textContent = "Scegli saggiamente..."; break;
-                case 'revealing': statusText.textContent = "Il destino si compie!"; break;
-                default: statusText.textContent = "";
-            }
-
-            if (gameData.doors) {
-                gameData.doors.forEach((door) => {
-                    const doorEl = document.createElement('div');
-                    doorEl.className = 'dd-door w-24 h-36 sm:w-28 sm:h-44';
-                    if (door.isOpen) doorEl.classList.add('open');
-                    if (door.chosenBy === currentUser.id && !door.isOpen) doorEl.classList.add('selected');
-                    
-                    doorEl.innerHTML = `
-                        <div class="dd-door-inner">
-                            <div class="dd-door-front ${door.color}"><span>?</span></div>
-                            <div class="dd-door-back ${door.isCursed ? 'cursed' : 'safe'}">${door.isCursed ? '💀' : '✔️'}</div>
-                        </div>`;
-                    
-                    if (gameData.status === 'choosing' && !door.chosenBy) {
-                        doorEl.onclick = () => handleDoorClick(door.id);
-                    }
-                    doorsArea.appendChild(doorEl);
-                });
-            }
-
-            const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
-            activePlayers.forEach((player, index) => {
-                const avatarEl = document.createElement('div');
-                avatarEl.className = 'dd-player-avatar';
-                avatarEl.id = `dd-avatar-${player.id}`;
-                avatarEl.innerHTML = `
-                    <img src="${player.character.imageUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-white shadow-lg">
-                    <div class="bg-black/50 text-white text-xs font-bold p-1 rounded -mt-2">${player.nickname}</div>`;
-                
-                gameContentEl.appendChild(avatarEl);
-                const choice = gameData.choices[player.id];
-                
-                let targetLeft, targetTop;
-                if (gameData.status !== 'intro' && choice !== undefined) {
-                    const doorEl = doorsArea.children[choice];
-                    if (doorEl) {
-                        targetLeft = `${doorEl.offsetLeft + doorEl.offsetWidth / 2}px`;
-                        targetTop = `${doorEl.offsetTop - 40}px`;
-                    }
-                } else {
-                    targetLeft = `${(index + 0.5) * (100 / activePlayers.length)}%`;
-                    targetTop = '120px';
-                }
-                avatarEl.style.left = targetLeft;
-                avatarEl.style.top = targetTop;
-                avatarEl.style.transform = 'translateX(-50%)';
-            });
-            
-            const eliminatedPlayers = localRoomData.players.filter(p => gameData.eliminatedPlayerIds.includes(p.id));
-            eliminatedPlayers.forEach(player => {
-                const eliminatedEl = document.createElement('div');
-                eliminatedEl.className = 'text-center';
-                eliminatedEl.innerHTML = `
-                    <img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover border-2 border-red-500 grayscale">
-                    <div class="text-xs text-slate-400">${player.nickname}</div>`;
-                eliminatedArea.appendChild(eliminatedEl);
-                
-                const avatarInArena = document.getElementById(`dd-avatar-${player.id}`);
-                if (avatarInArena) {
-                    avatarInArena.classList.add('eliminated');
-                }
-            });
-        }
-        function endDeathDoorGame() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const gameData = localRoomData.gameData;
-            
-            const winnerId = gameData.activePlayerIds[0];
-            
-            if (localRoomData.gameMode === 'championship') {
-                const finalRanking = [
-                    ...localRoomData.players.filter(p => p.id === winnerId),
-                    ...[...gameData.eliminatedPlayerIds].reverse().map(id => localRoomData.players.find(p => p.id === id))
-                ];
-                awardChampionshipPoints(finalRanking);
-            } else {
-                localRoomData.players.forEach(p => {
-                    p.score = (p.id === winnerId) ? 1 : 0;
-                });
-            }
-
-            const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
-            updateFirestore({ gameState: newState, players: localRoomData.players });
-        }
-
-        // --- FUNZIONI DI FINE GIOCO E UTILITY ---
-        function awardChampionshipPoints(sortedPlayerList) {
-            const pointsDistribution = {
-                '8': [10, 8, 6, 5, 4, 3, 2, 1],
-                '12': [15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0]
-            };
-            const numPlayers = localRoomData.players.length;
-            let points = pointsDistribution[numPlayers] || pointsDistribution['8']; // Default a 8
-
-            sortedPlayerList.forEach((sortedPlayer, index) => {
-                const playerInRoom = localRoomData.players.find(p => p.id === sortedPlayer.id);
-                if (playerInRoom) {
-                    playerInRoom.score += points[index] || 0;
-                }
-            });
-        }
-
-        function renderSummaryScreen() {
-            const { players, gameState, currentRound, championshipRounds, gameMode, currentGame } = localRoomData;
-            const title = document.getElementById('summary-title');
-            const subtitle = document.getElementById('summary-subtitle');
-            const leaderboard = document.getElementById('summary-leaderboard');
-            const controls = document.getElementById('summary-controls');
-            leaderboard.innerHTML = '';
-            controls.innerHTML = '';
-            const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
-            if (gameState === 'championship-finished') {
-                title.textContent = '🏆 Campionato Finito! 🏆';
-                subtitle.textContent = `Il vincitore assoluto è ${sortedPlayers[0].nickname}!`;
-                const menuBtn = document.createElement('button');
-                menuBtn.textContent = 'Torna al Menu Principale';
-                menuBtn.className = 'btn-primary text-white font-bold py-3 px-6 rounded-lg';
-                menuBtn.onclick = () => { localRoomData = null; showScreen('lobby'); };
-                controls.appendChild(menuBtn);
-            } else if (gameState === 'round-end') {
-                title.textContent = `Fine del Round ${currentRound}`;
-                subtitle.textContent = `Ecco la classifica attuale.`;
-                const continueBtn = document.createElement('button');
-                continueBtn.textContent = 'Prosegui al Prossimo Round';
-                continueBtn.className = 'btn-secondary text-white font-bold py-3 px-6 rounded-lg';
-                continueBtn.onclick = advanceChampionship;
-                controls.appendChild(continueBtn);
-            } else if (gameState === 'free-play-finished') {
-                const gameNameMap = {'rps': 'Morra Cinese', 'memory': 'Memory', 'lucky-dice': 'Dado Fortunato', 'bomb': 'Bomba', 'succofono': 'Succofono', 'hide-and-seek': 'Icona Misteriosa', 'touch-and-go': 'Tocco al Volo', 'death-door': 'Porta della Morte'};
-                title.textContent = `🎉 Partita di ${gameNameMap[currentGame] || 'Gioco'} Finita! 🎉`;
-                subtitle.textContent = `Complimenti a tutti i giocatori!`;
-                const menuBtn = document.createElement('button');
-                menuBtn.textContent = 'Scegli un Altro Gioco';
-                menuBtn.className = 'btn-primary text-white font-bold py-3 px-6 rounded-lg';
-                menuBtn.onclick = () => { localRoomData.gameState = 'minigame-selection'; renderAll(); };
-                controls.appendChild(menuBtn);
-            }
-            sortedPlayers.forEach((p, index) => {
-                const playerDiv = document.createElement('div');
-                const rankIcon = ['🥇', '🥈', '🥉'][index] || `<span class="text-slate-400">${index + 1}°</span>`;
-                playerDiv.className = 'flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600';
-                playerDiv.innerHTML = `
-                    <div class="flex items-center gap-4">
-                        <span class="text-3xl w-8 text-center">${rankIcon}</span>
-                        <img src="${p.character.imageUrl}" class="w-12 h-12 rounded-full object-cover">
-                        <span class="font-semibold text-xl">${p.nickname}</span>
-                    </div>
-                    <span class="font-bold text-2xl text-cyan-300">${p.score}</span>`;
-                leaderboard.appendChild(playerDiv);
-            });
-        }
-        
-        function advanceChampionship() {
-            if (localRoomData.hostId !== currentUser.id) return;
-            const nextRound = localRoomData.currentRound + 1;
-            if (nextRound > localRoomData.championshipRounds) {
-                updateFirestore({ gameState: 'championship-finished' });
-            } else {
-                updateFirestore({ 
-                    gameState: 'in-game',
-                    currentRound: nextRound,
-                    gameData: null,
-                    currentGame: localRoomData.gameSequence[nextRound - 1] || 'memory',
-                    currentPlayerIndex: Math.floor(Math.random() * localRoomData.players.length)
-                });
-            }
-        }
-
-        function updateLeaderboard(leaderboardElement, players, currentPlayerId = null) {
-            leaderboardElement.innerHTML = '';
-            const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
-            sortedPlayers.forEach((p, index) => {
-                const playerDiv = document.createElement('div');
-                let highlightClass = 'bg-slate-700/50 border-slate-600';
-                if (currentPlayerId && p.id === currentPlayerId) {
-                    highlightClass = 'bg-cyan-600/50 scale-105 shadow-lg border-cyan-400';
-                }
-                playerDiv.className = `flex items-center justify-between p-2 rounded-lg transition-all duration-300 border ${highlightClass}`;
-                playerDiv.innerHTML = `
-                    <div class="flex items-center gap-2">
-                        <span class="font-bold text-slate-400 w-6">${index + 1}.</span>
-                        <img src="${p.character.imageUrl}" class="w-8 h-8 rounded-full object-cover">
-                        <span class="font-semibold">${p.nickname}</span>
-                    </div>
-                    <span class="font-bold text-xl text-cyan-300">${p.score}</span>`;
-                leaderboardElement.appendChild(playerDiv);
-            });
-        }
-        
+
+      // --- STATO GLOBALE E DATI ---
+      let localRoomData = null;
+      let currentUser = null;
+      let userNickname = '';
+      let tempSelectedCharId = null;
+      let isActionLocked = false;
+      let audioSynth, bombSynth, tickSynth, drinkSynth, greenLightSynth, redLightSynth, hideSound, foundSound, goodTapSound, badTapSound, deathDoorSound, safeDoorSound, heartbeatSound;
+      let unsubscribeRoomListener = null;
+      let currentRoomId = null;
+
+      const ROSTER = [
+          { id: 'gumball', name: 'Gumball', imageUrl: 'https://i.pinimg.com/736x/e4/2d/39/e42d393bf4ec481183d809a0b8cd1989.jpg' },
+          { id: 'johnny', name: 'Johnny', imageUrl: 'https://i.pinimg.com/736x/1c/3a/e4/1c3ae484ead7c408f51ed33a46f91db6.jpg' },
+          { id: 'robin', name: 'Robin', imageUrl: 'https://i.pinimg.com/736x/e7/3e/e2/e73ee222f16116892d37961f6ccf511a.jpg' },
+          { id: 'clarence', name: 'Clarence', imageUrl: 'https://i.pinimg.com/1200x/ed/50/84/ed5084c8f0cf0f3f7c9f60df18346c20.jpg' },
+          { id: 'steven', name: 'Steven', imageUrl: 'https://i.pinimg.com/736x/0f/84/b5/0f84b53a2fc5d71271ae3cc29a0e44c4.jpg' },
+          { id: 'carlos', name: 'Carlos', imageUrl: 'https://i.pinimg.com/1200x/51/47/79/5147798a95cdcdc5e1f63ed44e4d44ec.jpg' },
+          { id: 'superboy', name: 'Superboy', imageUrl: 'https://i.pinimg.com/736x/e3/b6/9e/e3b69e2535013ad4fe46a0187dfd007b.jpg' },
+          { id: 'jake', name: 'Jake', imageUrl: 'https://i.pinimg.com/736x/00/07/e5/0007e54a9a0d180850ed97718df1e432.jpg' },
+          { id: 'stewie', name: 'Stewie', imageUrl: 'https://i.pinimg.com/1200x/ff/37/ea/ff37ea1eb4a933d3ce1613a255e1fa6b.jpg' },
+          { id: 'daffy', name: 'Daffy', imageUrl: 'https://i.pinimg.com/1200x/09/ac/8b/09ac8bc06dbb233e2ffdaa65dabd9b7d.jpg' },
+          { id: 'lapis', name: 'Lapis', imageUrl: 'https://i.pinimg.com/736x/94/58/a8/9458a8a235f2cbc6a4b5b19758ace36a.jpg' },
+          { id: 'ametista', name: 'Ametista', imageUrl: 'https://i.pinimg.com/736x/fb/0e/ce/fb0ece38ed53baf9eef5cafd132d78e6.jpg' },
+          { id: 'francine', name: 'Francine', imageUrl: 'https://i.pinimg.com/736x/e3/fb/aa/e3fbaac3721a6d9f5dbf1d20f582b4c8.jpg' },
+          { id: 'lisa', name: 'Lisa', imageUrl: 'https://i.pinimg.com/736x/e5/2d/fe/e52dfee5a58f5dad19f9e0592c63a7cd.jpg' },
+          { id: 'nicole', name: 'Nicole', imageUrl: 'https://i.pinimg.com/736x/81/24/e4/8124e43da43e1d06dcdbca15f22a0cd9.jpg' },
+          { id: 'camilla', name: 'Camilla', imageUrl: 'https://i.pinimg.com/736x/16/ae/64/16ae64725907e35991fe6fa119778835.jpg' },
+          { id: 'candace', name: 'Candace', imageUrl: 'https://i.pinimg.com/736x/e3/9d/95/e39d9504c7131e87c662b1f0537c3d7b.jpg' },
+          { id: 'rosalinda', name: 'Rosalinda', imageUrl: 'https://i.pinimg.com/736x/09/14/f0/0914f029e712e92de9d4f0081a5da032.jpg' },
+          { id: 'wanda', name: 'Wanda', imageUrl: 'https://i.pinimg.com/1200x/fd/b3/ba/fdb3bada328ff3eb5aff2cc8c5bc92d1.jpg' },
+          { id: 'corvina', name: 'Corvina', imageUrl: 'https://i.pinimg.com/736x/fc/e3/30/fce330b50ce9cbf53287e441be15d597.jpg' },
+      ];
+
+      const screens = {
+          nickname: document.getElementById('nickname-screen'),
+          characterSelection: document.getElementById('character-selection-screen'),
+          lobby: document.getElementById('lobby-screen'),
+          createRoom: document.getElementById('create-room-screen'),
+          wait: document.getElementById('room-wait-screen'),
+          hostModeSelection: document.getElementById('host-mode-selection-screen'),
+          memory: document.getElementById('memory-game-screen'),
+          rps: document.getElementById('rps-game-screen'),
+          luckyDice: document.getElementById('lucky-dice-game-screen'),
+          bomb: document.getElementById('bomb-game-screen'),
+          succofono: document.getElementById('succofono-game-screen'),
+          hideAndSeek: document.getElementById('hide-and-seek-game-screen'),
+          touchAndGo: document.getElementById('touch-and-go-game-screen'),
+          deathDoor: document.getElementById('death-door-game-screen'),
+          summaryScreen: document.getElementById('summary-screen'),
+          minigameSelection: document.getElementById('minigame-selection-screen'),
+      };
+
+      // --- FUNZIONI UTILI ---
+      const modal = document.getElementById('notification-modal');
+      const modalMessage = document.getElementById('modal-message');
+      document.getElementById('modal-close-btn').addEventListener('click', () => modal.classList.add('hidden'));
+
+      function showModal(message) {
+          modalMessage.textContent = message;
+          modal.classList.remove('hidden');
+      }
+
+      function showScreen(screenName) {
+          Object.values(screens).forEach(screen => screen.classList.add('hidden'));
+          if (screens[screenName]) {
+              screens[screenName].classList.remove('hidden');
+          }
+      }
+      
+      function renderAll() {
+          if (!localRoomData) return;
+          switch(localRoomData.gameState) {
+              case 'waiting': showScreen('wait'); updateWaitingRoomUI(); break;
+              case 'host-mode-selection': showScreen('hostModeSelection'); renderHostModeSelection(); break;
+              case 'character-selection': showScreen('characterSelection'); renderCharacterSelectionScreen(); break;
+              case 'in-game':
+                  const game = localRoomData.currentGame;
+                  const gameData = localRoomData.gameData;
+                  if (game === 'rps') {
+                      showScreen('rps');
+                      if (!gameData || gameData.type !== 'rps') initializeRPSGame();
+                      renderRPSGame();
+                  } else if (game === 'lucky-dice') {
+                      showScreen('luckyDice');
+                      if (!gameData || gameData.type !== 'lucky-dice') initializeLuckyDiceGame();
+                      renderLuckyDiceGame();
+                  } else if (game === 'bomb') {
+                      showScreen('bomb');
+                      if (!gameData || gameData.type !== 'bomb') initializeBombGame();
+                      renderBombGame();
+                  } else if (game === 'succofono') {
+                      showScreen('succofono');
+                      if (!gameData || gameData.type !== 'succofono') initializeSuccofonoGame();
+                      renderSuccofonoGame();
+                  } else if (game === 'hide-and-seek') {
+                      showScreen('hideAndSeek');
+                      if (!gameData || gameData.type !== 'hide-and-seek') initializeHideAndSeekGame();
+                      renderHideAndSeekGame();
+                  } else if (game === 'touch-and-go') {
+                      showScreen('touchAndGo');
+                      if (!gameData || gameData.type !== 'touch-and-go') initializeTouchAndGoGame();
+                      renderTouchAndGoGame();
+                  } else if (game === 'death-door') {
+                      showScreen('deathDoor');
+                      if (!gameData || gameData.type !== 'death-door') initializeDeathDoorGame();
+                      renderDeathDoorGame();
+                  } else { 
+                      showScreen('memory');
+                      if (!gameData || gameData.type !== 'memory') initializeMemoryGame();
+                      renderMemoryGame();
+                  }
+                  break;
+              case 'round-end':
+              case 'championship-finished':
+              case 'free-play-finished':
+                  showScreen('summaryScreen');
+                  renderSummaryScreen();
+                  break;
+              case 'minigame-selection':
+                  showScreen('minigameSelection');
+                  break;
+          }
+      }
+
+      // --- FLUSSO PRINCIPALE E SETUP ---
+      document.addEventListener('DOMContentLoaded', () => {
+          try { 
+              audioSynth = new Tone.Synth().toDestination(); 
+              bombSynth = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0 } }).toDestination();
+              tickSynth = new Tone.MembraneSynth().toDestination();
+              drinkSynth = new Tone.AMSynth({ harmonicity: 1.5, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 }, oscillator: { type: 'sine' }, modulation: { type: 'square' }, modulationEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2 } }).toDestination();
+              greenLightSynth = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.1 } }).toDestination();
+              redLightSynth = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.2 } }).toDestination();
+              hideSound = new Tone.PluckSynth({ attackNoise: 1, dampening: 4000, resonance: 0.7 }).toDestination();
+              foundSound = new Tone.MetalSynth({ frequency: 50, envelope: { attack: 0.001, decay: 0.4, release: 0.2 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }).toDestination();
+              goodTapSound = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 } }).toDestination();
+              badTapSound = new Tone.Synth({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.1 } }).toDestination();
+              deathDoorSound = new Tone.NoiseSynth({ noise: { type: "pink" }, envelope: { attack: 0.2, decay: 1.5, sustain: 0 } }).toDestination();
+              safeDoorSound = new Tone.Synth({ oscillator: { type: "fmsine", modulationType: "triangle", harmonicity: 0.5 }, envelope: { attack: 0.1, decay: 0.5, sustain: 0.1, release: 1 } }).toDestination();
+              heartbeatSound = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 2, oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4, attackCurve: "exponential" } }).toDestination();
+          } catch (e) { console.error("Tone.js non è stato inizializzato."); }
+          
+          document.getElementById('join-lobby-btn').addEventListener('click', joinLobby);
+          document.getElementById('confirm-character-btn').addEventListener('click', handleCharacterConfirmation);
+          document.getElementById('create-room-btn').addEventListener('click', () => showScreen('createRoom'));
+          document.getElementById('confirm-create-room-btn').addEventListener('click', createRoom);
+          document.getElementById('join-room-btn').addEventListener('click', joinRoom);
+          document.getElementById('add-cpu-btn').addEventListener('click', addCpu);
+          document.getElementById('start-game-btn').addEventListener('click', startGame);
+          document.getElementById('host-select-free-play').addEventListener('click', () => selectGameMode('free-play'));
+          document.getElementById('host-select-championship').addEventListener('click', () => selectGameMode('championship'));
+          document.getElementById('play-memory-again-btn').addEventListener('click', () => startNewGame('memory'));
+          document.getElementById('play-rps-btn').addEventListener('click', () => startNewGame('rps'));
+          document.getElementById('play-lucky-dice-btn').addEventListener('click', () => startNewGame('lucky-dice'));
+          document.getElementById('play-bomb-btn').addEventListener('click', () => startNewGame('bomb'));
+          document.getElementById('play-succofono-btn').addEventListener('click', () => startNewGame('succofono'));
+          document.getElementById('play-hns-btn').addEventListener('click', () => startNewGame('hide-and-seek'));
+          document.getElementById('play-tag-btn').addEventListener('click', () => startNewGame('touch-and-go'));
+          document.getElementById('play-death-door-btn').addEventListener('click', () => startNewGame('death-door'));
+          document.getElementById('back-to-lobby-btn').addEventListener('click', () => { localRoomData = null; showScreen('lobby'); });
+          
+          const playerCountSlider = document.getElementById('player-count-slider');
+          playerCountSlider.addEventListener('input', (e) => document.getElementById('player-count-value').textContent = e.target.value);
+          const cpuDifficultySlider = document.getElementById('cpu-difficulty-slider');
+          cpuDifficultySlider.addEventListener('input', (e) => document.getElementById('cpu-difficulty-value').textContent = e.target.value);
+          const roundsCountSlider = document.getElementById('rounds-count-slider');
+          roundsCountSlider.addEventListener('input', (e) => document.getElementById('rounds-count-value').textContent = e.target.value);
+
+          document.getElementById('drink-btn').addEventListener('click', () => handleDrinkPress());
+
+          document.getElementById('player-list').addEventListener('click', handleRemoveCpu);
+          document.getElementById('pass-bomb-btn').addEventListener('click', handlePassBomb);
+          
+          // Listeners per i pulsanti di avvio degli intro
+          document.getElementById('dd-start-btn').addEventListener('click', startDeathDoorRound);
+          document.getElementById('memory-start-btn').addEventListener('click', startMemoryGame);
+          document.getElementById('rps-start-btn').addEventListener('click', startRPSGame);
+          document.getElementById('lucky-dice-start-btn').addEventListener('click', startLuckyDiceGame);
+          document.getElementById('bomb-start-btn').addEventListener('click', startBombGame);
+          document.getElementById('succofono-start-btn').addEventListener('click', startSuccofonoGame);
+          document.getElementById('hns-start-btn').addEventListener('click', initializeHideAndSeekGame);
+          document.getElementById('tag-start-btn').addEventListener('click', startTouchAndGoGame);
+
+          setupRosterGrid();
+      });
+
+      function joinLobby() {
+          const input = document.getElementById('nickname-input');
+          if (input.value.trim().length > 2) {
+              if (Tone.context.state !== 'running') {
+                  Tone.start();
+              }
+              userNickname = input.value.trim();
+              currentUser = { id: `user_${Date.now()}_${Math.random()}`, nickname: userNickname };
+              showScreen('lobby');
+          } else {
+              input.classList.add('shake');
+              setTimeout(() => input.classList.remove('shake'), 500);
+          }
+      }
+      
+      async function createRoom() {
+          const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+          const newRoomData = {
+              id: roomId,
+              hostId: currentUser.id,
+              players: [{ ...currentUser, score: 0, isHost: true, hasVoted: false, hasSelectedCharacter: false }],
+              maxPlayers: parseInt(document.getElementById('player-count-slider').value),
+              gameState: 'waiting',
+              cpuDifficulty: parseInt(document.getElementById('cpu-difficulty-slider').value),
+              championshipRounds: parseInt(document.getElementById('rounds-count-slider').value),
+          };
+          
+          try {
+              await db.collection('stanze').doc(roomId).set(newRoomData);
+              listenToRoom(roomId);
+          } catch (error) {
+              console.error("Errore nella creazione della stanza:", error);
+              showModal("Impossibile creare la stanza. Riprova.");
+          }
+      }
+
+      async function joinRoom() {
+          const roomId = document.getElementById('join-code-input').value.toUpperCase().trim();
+          if (!roomId) {
+              showModal("Inserisci un codice stanza.");
+              return;
+          }
+
+          const roomRef = db.collection('stanze').doc(roomId);
+          try {
+              const doc = await roomRef.get();
+              if (!doc.exists) {
+                  showModal("Stanza non trovata.");
+                  return;
+              }
+
+              const roomData = doc.data();
+              if (roomData.players.length >= roomData.maxPlayers) {
+                  showModal("La stanza è piena.");
+                  return;
+              }
+
+              const newPlayer = { ...currentUser, score: 0, isHost: false, hasVoted: false, hasSelectedCharacter: false };
+              await roomRef.update({
+                  players: firebase.firestore.FieldValue.arrayUnion(newPlayer)
+              });
+              listenToRoom(roomId);
+
+          } catch (error) {
+              console.error("Errore nell'unirsi alla stanza:", error);
+              showModal("Impossibile unirsi alla stanza. Riprova.");
+          }
+      }
+
+      function listenToRoom(roomId) {
+          currentRoomId = roomId;
+          if (unsubscribeRoomListener) {
+              unsubscribeRoomListener();
+          }
+          unsubscribeRoomListener = db.collection('stanze').doc(roomId).onSnapshot((doc) => {
+              if (doc.exists) {
+                  localRoomData = doc.data();
+                  renderAll();
+              } else {
+                  // La stanza è stata eliminata
+                  showModal("La stanza è stata chiusa dall'host.");
+                  showScreen('lobby');
+                  localRoomData = null;
+                  currentRoomId = null;
+                  if (unsubscribeRoomListener) unsubscribeRoomListener();
+              }
+          }, (error) => {
+              console.error("Errore di ascolto:", error);
+              showModal("Errore di connessione con la stanza.");
+          });
+      }
+
+      function updateFirestore(updateData) {
+          if (currentRoomId) {
+              db.collection('stanze').doc(currentRoomId).update(updateData)
+                  .catch(error => console.error("Errore nell'aggiornamento:", error));
+          }
+      }
+
+      function updateWaitingRoomUI() {
+          document.getElementById('room-code-display').textContent = localRoomData.id;
+          document.getElementById('current-players').textContent = localRoomData.players.length;
+          document.getElementById('max-players').textContent = localRoomData.maxPlayers;
+          const playerList = document.getElementById('player-list');
+          playerList.innerHTML = '';
+          const isHost = localRoomData.hostId === currentUser.id;
+
+          localRoomData.players.forEach(p => {
+              const playerDiv = document.createElement('div');
+              playerDiv.className = 'bg-slate-700/50 p-3 rounded-lg text-center border border-slate-600 flex flex-col items-center gap-2 relative';
+              const crown = p.isHost ? '👑' : (p.isCPU ? '🤖' : '');
+              const imageUrl = p.character ? p.character.imageUrl : 'https://placehold.co/64x64/475569/94a3b8?text=?';
+              
+              let removeBtn = '';
+              if (isHost && p.isCPU) {
+                  removeBtn = `<button data-player-id="${p.id}" class="remove-cpu-btn absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white font-bold w-6 h-6 rounded-full flex items-center justify-center p-1">&times;</button>`;
+              }
+
+              playerDiv.innerHTML = `
+                  ${removeBtn}
+                  <img src="${imageUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-slate-500">
+                  <span class="font-bold">${crown} ${p.nickname}</span>`;
+              playerList.appendChild(playerDiv);
+          });
+          document.getElementById('start-game-btn').disabled = !isHost || localRoomData.players.length < 2;
+          document.getElementById('add-cpu-btn').disabled = !isHost || localRoomData.players.length >= localRoomData.maxPlayers;
+      }
+      
+      function addCpu() {
+          if (localRoomData.players.length >= localRoomData.maxPlayers) return;
+          const cpuCount = localRoomData.players.filter(p => p.isCPU).length;
+          const newCPU = { 
+              id: `cpu_${Date.now()}`, 
+              nickname: `CPU ${cpuCount + 1}`, 
+              score: 0, 
+              isCPU: true, 
+              hasVoted: true,
+              hasSelectedCharacter: true 
+          };
+          updateFirestore({
+              players: firebase.firestore.FieldValue.arrayUnion(newCPU)
+          });
+      }
+
+      function handleRemoveCpu(e) {
+          if (!e.target.classList.contains('remove-cpu-btn')) return;
+          const playerIdToRemove = e.target.dataset.playerId;
+          const playerToRemove = localRoomData.players.find(p => p.id === playerIdToRemove);
+          if (playerToRemove) {
+              updateFirestore({
+                  players: firebase.firestore.FieldValue.arrayRemove(playerToRemove)
+              });
+          }
+      }
+
+      function startGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({ gameState: 'host-mode-selection' });
+      }
+
+      function renderHostModeSelection() {
+          const isHost = localRoomData.hostId === currentUser.id;
+          const hostControls = document.getElementById('host-controls-mode');
+          const guestWait = document.getElementById('guest-wait-mode');
+
+          if (isHost) {
+              hostControls.classList.remove('hidden');
+              guestWait.classList.add('hidden');
+          } else {
+              hostControls.classList.add('hidden');
+              guestWait.classList.remove('hidden');
+          }
+      }
+
+      function selectGameMode(mode) {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({
+              gameMode: mode,
+              gameState: 'character-selection'
+          });
+      }
+      
+      // --- LOGICA SELEZIONE PERSONAGGIO ---
+      function setupRosterGrid() {
+          const grid = document.getElementById('roster-grid');
+          grid.innerHTML = '';
+          ROSTER.forEach(char => {
+              const card = document.createElement('div');
+              card.className = 'character-card aspect-square rounded-lg overflow-hidden bg-slate-700';
+              card.dataset.charId = char.id;
+              card.innerHTML = `<img src="${char.imageUrl}" alt="${char.name}" class="w-full h-full main-img"><div class="taken-overlay hidden"></div>`;
+              card.addEventListener('click', () => handleCharacterClick(char.id));
+              grid.appendChild(card);
+          });
+      }
+
+      function handleCharacterClick(charId) {
+          const player = localRoomData.players.find(p => p.id === currentUser.id);
+          if (player.hasSelectedCharacter) return;
+
+          const isTaken = localRoomData.players.some(p => p.character && p.character.id === charId);
+          if (isTaken) return;
+
+          tempSelectedCharId = charId;
+          renderCharacterSelectionScreen(); // Re-render to show selection locally
+      }
+
+      function handleCharacterConfirmation() {
+          if (!tempSelectedCharId) return;
+          const updatedPlayers = localRoomData.players.map(p => {
+              if (p.id === currentUser.id) {
+                  return {
+                      ...p,
+                      character: ROSTER.find(c => c.id === tempSelectedCharId),
+                      hasSelectedCharacter: true
+                  };
+              }
+              return p;
+          });
+          tempSelectedCharId = null;
+          updateFirestore({ players: updatedPlayers });
+      }
+
+      function renderCharacterSelectionScreen() {
+          const humanPlayers = localRoomData.players.filter(p => !p.isCPU);
+          const selectedPlayers = humanPlayers.filter(p => p.hasSelectedCharacter);
+          const statusEl = document.getElementById('character-selection-status');
+          statusEl.textContent = `In attesa di ${humanPlayers.length - selectedPlayers.length} giocatori...`;
+
+          const confirmBtn = document.getElementById('confirm-character-btn');
+          const me = localRoomData.players.find(p => p.id === currentUser.id);
+          if(me.hasSelectedCharacter) {
+              confirmBtn.disabled = true;
+              confirmBtn.textContent = "Scelta Confermata!";
+          } else {
+              confirmBtn.disabled = !tempSelectedCharId;
+              confirmBtn.textContent = "Conferma Scelta";
+          }
+
+          const takenCharIds = new Set(localRoomData.players.map(p => p.character?.id).filter(Boolean));
+          document.querySelectorAll('.character-card').forEach(card => {
+              const charId = card.dataset.charId;
+              const overlay = card.querySelector('.taken-overlay');
+              
+              card.classList.remove('selected', 'taken');
+              overlay.classList.add('hidden');
+
+              if (charId === tempSelectedCharId) {
+                  card.classList.add('selected');
+              }
+
+              if (takenCharIds.has(charId)) {
+                  card.classList.add('taken');
+                  const owner = localRoomData.players.find(p => p.character?.id === charId);
+                  overlay.innerHTML = `<img src="${owner.character.imageUrl}" title="${owner.nickname}">`;
+                  overlay.classList.remove('hidden');
+              }
+          });
+      }
+      
+      function startNewGame(gameName) {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const update = {
+              gameState: 'in-game',
+              currentGame: gameName,
+              gameData: null,
+              currentPlayerIndex: Math.floor(Math.random() * localRoomData.players.length)
+          };
+          if (localRoomData.gameMode === 'free-play') {
+              update.players = localRoomData.players.map(p => ({ ...p, score: 0 }));
+          }
+          updateFirestore(update);
+      }
+      
+      function hideIntroOverlay(overlayId, callback) {
+          const introOverlay = document.getElementById(overlayId);
+          introOverlay.style.opacity = '0';
+          setTimeout(() => {
+              introOverlay.classList.add('hidden');
+              if(callback) callback();
+          }, 500); // Durata della transizione CSS
+      }
+      
+      // --- LOGICA MEMORY ---
+      const EMOJI_POOL = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🍎', '🍌', '🍇', '🍓', '🍑', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🌽', '🥕', '🧄', '🧅', '🥔', '🥐', '🥨', '🧀', '🍔', '🍕'];
+      function initializeMemoryGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = { type: 'memory', status: 'intro' };
+          updateFirestore({ gameData });
+      }
+      function startMemoryGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          
+          const numPairs = 24; // Per una griglia 6x8
+          const cardPool = [...EMOJI_POOL].sort(() => 0.5 - Math.random()).slice(0, numPairs);
+          let cards = [...cardPool, ...cardPool];
+          cards.sort(() => 0.5 - Math.random());
+
+          const newGameData = {
+              ...localRoomData.gameData,
+              status: 'playing',
+              cpuMemory: {},
+              board: cards.map((emoji, index) => ({
+                  id: index,
+                  charId: emoji,
+                  isFlipped: false,
+                  isMatched: false,
+              })),
+              flippedCards: [],
+              pairsFound: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+          };
+          updateFirestore({ gameData: newGameData });
+      }
+      function renderMemoryGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData || !gameData.board) return;
+
+          const board = document.getElementById('memory-board');
+          board.innerHTML = '';
+          const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+          document.getElementById('current-player-turn').textContent = currentPlayer.nickname;
+          document.getElementById('current-player-turn').style.color = currentPlayer.isCPU ? '#f87171' : '#67e8f9';
+          
+          const tempScores = localRoomData.players.map(p => ({...p, score: gameData.pairsFound[p.id] || 0 }));
+          updateLeaderboard(document.getElementById('leaderboard'), tempScores, currentPlayer.id);
+
+          const cardCount = gameData.board.length;
+          let cols = 8; // Griglia 8x6
+          board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+          
+          gameData.board.forEach(cardData => {
+              const cardContainer = document.createElement('div');
+              cardContainer.className = 'card-container aspect-square';
+              const cardEl = document.createElement('div');
+              cardEl.className = 'card';
+              cardEl.dataset.cardId = cardData.id;
+
+              if (cardData.isFlipped) cardEl.classList.add('flipped');
+              if (cardData.isMatched) cardEl.classList.add('matched');
+
+              cardEl.innerHTML = `
+                  <div class="back bg-slate-700 hover:bg-slate-600 cursor-pointer"></div>
+                  <div class="front bg-slate-900 flex items-center justify-center p-1">${cardData.charId}</div>
+              `;
+
+              if (!cardData.isFlipped && !cardData.isMatched) {
+                  cardEl.addEventListener('click', () => handleCardClick(cardData.id));
+              }
+              cardContainer.appendChild(cardEl);
+              board.appendChild(cardContainer);
+          });
+      }
+      function handleCardClick(cardId) {
+          const currentPlayer = localRoomData.players[localRoomData.currentPlayerIndex];
+          if (isActionLocked || currentPlayer.id !== currentUser.id) return;
+
+          const card = localRoomData.gameData.board.find(c => c.id === cardId);
+          if (card.isFlipped || card.isMatched) return;
+
+          const newBoard = [...localRoomData.gameData.board];
+          newBoard[cardId].isFlipped = true;
+          const newFlippedCards = [...localRoomData.gameData.flippedCards, newBoard[cardId]];
+
+          isActionLocked = true;
+          if (audioSynth) audioSynth.triggerAttackRelease('C4', '8n');
+          
+          const update = { 'gameData.board': newBoard, 'gameData.flippedCards': newFlippedCards };
+          updateFirestore(update);
+
+          if (newFlippedCards.length === 2) {
+              setTimeout(checkMatch, 1000);
+          } else {
+              isActionLocked = false;
+          }
+      }
+      function checkMatch() {
+          if (localRoomData.hostId !== currentUser.id) return;
+
+          const gameData = localRoomData.gameData;
+          const [card1, card2] = gameData.flippedCards;
+          const currentPlayerId = localRoomData.players[localRoomData.currentPlayerIndex].id;
+          
+          let newBoard = [...gameData.board];
+          let newPairsFound = { ...gameData.pairsFound };
+          let nextPlayerIndex = localRoomData.currentPlayerIndex;
+          
+          if (card1.charId === card2.charId) {
+              newBoard.find(c => c.id === card1.id).isMatched = true;
+              newBoard.find(c => c.id === card2.id).isMatched = true;
+              newPairsFound[currentPlayerId]++;
+              if (audioSynth) audioSynth.triggerAttackRelease('G4', '8n');
+          } else {
+              newBoard.find(c => c.id === card1.id).isFlipped = false;
+              newBoard.find(c => c.id === card2.id).isFlipped = false;
+              if (audioSynth) audioSynth.triggerAttackRelease('C3', '8n');
+              nextPlayerIndex = (localRoomData.currentPlayerIndex + 1) % localRoomData.players.length;
+          }
+          
+          const allMatched = newBoard.every(c => c.isMatched);
+          if (allMatched) {
+              endMemoryGame();
+              return;
+          }
+
+          updateFirestore({
+              'gameData.board': newBoard,
+              'gameData.flippedCards': [],
+              'gameData.pairsFound': newPairsFound,
+              'currentPlayerIndex': nextPlayerIndex
+          });
+      }
+      function endMemoryGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          if (localRoomData.gameMode === 'championship') {
+              const playersWithTempScore = localRoomData.players.map(p => ({
+                  ...p,
+                  tempScore: localRoomData.gameData.pairsFound[p.id] || 0
+              }));
+              const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
+              awardChampionshipPoints(sortedPlayers);
+          }
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState });
+      }
+
+      // --- LOGICA MORRA CINESE ---
+      function initializeRPSGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({ gameData: { type: 'rps', status: 'intro' } });
+      }
+      function startRPSGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = {
+              ...localRoomData.gameData,
+              status: 'playing',
+              log: [],
+              schedule: generateRoundRobinSchedule(localRoomData.players),
+              matchupIndex: 0,
+              matchupChoices: {},
+              tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+          };
+          updateFirestore({ gameData });
+      }
+      function generateRoundRobinSchedule(players) {
+          const schedule = [];
+          for (let i = 0; i < players.length; i++) {
+              for (let j = i + 1; j < players.length; j++) {
+                  schedule.push([players[i].id, players[j].id]);
+              }
+          }
+          return schedule.sort(() => Math.random() - 0.5);
+      }
+      function renderRPSGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData || gameData.status !== 'playing') return;
+          
+          const matchupArea = document.getElementById('rps-matchup-area');
+          const controlsArea = document.getElementById('rps-player-controls');
+          const logArea = document.getElementById('rps-log');
+          
+          matchupArea.innerHTML = '';
+          controlsArea.innerHTML = '';
+          logArea.innerHTML = gameData.log.join('');
+          
+          const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
+          updateLeaderboard(document.getElementById('rps-leaderboard'), tempScorePlayers);
+          
+          if (gameData.matchupIndex >= gameData.schedule.length) {
+              return; // Host will end the game
+          }
+
+          const [p1Id, p2Id] = gameData.schedule[gameData.matchupIndex];
+          const player1 = localRoomData.players.find(p => p.id === p1Id);
+          const player2 = localRoomData.players.find(p => p.id === p2Id);
+
+          matchupArea.innerHTML = `
+              <div class="flex justify-around items-center">
+                  <div class="text-center w-1/3">
+                      <img src="${player1.character.imageUrl}" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-blue-400">
+                      <h3 class="text-xl font-bold mt-2">${player1.nickname}</h3>
+                      <div id="p1-choice-display" class="text-5xl mt-4 h-16">?</div>
+                  </div>
+                  <div class="text-4xl font-black text-red-400">VS</div>
+                  <div class="text-center w-1/3">
+                      <img src="${player2.character.imageUrl}" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-green-400">
+                      <h3 class="text-xl font-bold mt-2">${player2.nickname}</h3>
+                      <div id="p2-choice-display" class="text-5xl mt-4 h-16">?</div>
+                  </div>
+              </div>`;
+          
+          const isUserInMatch = currentUser.id === p1Id || currentUser.id === p2Id;
+          if (isUserInMatch && !gameData.matchupChoices[currentUser.id]) {
+              controlsArea.innerHTML = `
+                  <p class="mb-4 text-lg text-cyan-300">Fai la tua scelta!</p>
+                  <div class="flex justify-center gap-4">
+                      <button onclick="handleRPSChoice('rock')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✊</button>
+                      <button onclick="handleRPSChoice('paper')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✋</button>
+                      <button onclick="handleRPSChoice('scissors')" class="rps-choice-btn p-4 rounded-full bg-slate-700 border-2 border-slate-600">✌️</button>
+                  </div>`;
+          }
+      }
+      function handleRPSChoice(choice) {
+          const gameData = localRoomData.gameData;
+          if (isActionLocked || gameData.matchupChoices[currentUser.id]) return;
+          isActionLocked = true;
+          const newChoices = { ...gameData.matchupChoices, [currentUser.id]: choice };
+          updateFirestore({ 'gameData.matchupChoices': newChoices });
+      }
+      function endRPSGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          if (localRoomData.gameMode === 'championship') {
+              const playersWithTempScore = localRoomData.players.map(p => ({
+                  ...p,
+                  tempScore: localRoomData.gameData.tempScores[p.id] || 0
+              }));
+              const sortedPlayers = playersWithTempScore.sort((a, b) => b.tempScore - a.tempScore);
+              awardChampionshipPoints(sortedPlayers);
+          } else {
+               localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
+          }
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+
+      // --- LOGICA DADO FORTUNATO (REFACTORED) ---
+      const HUD_COLORS = ["border-red-500", "border-blue-500", "border-green-500", "border-yellow-500", "border-purple-500", "border-pink-500", "border-indigo-500", "border-teal-500"];
+      function initializeLuckyDiceGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({ gameData: { type: 'lucky-dice', status: 'intro' } });
+      }
+      function startLuckyDiceGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = {
+              ...localRoomData.gameData,
+              status: 'playing',
+              mainTimer: 180,
+              playerProgress: {}
+          };
+          const shuffledColors = [...HUD_COLORS].sort(() => 0.5 - Math.random());
+          localRoomData.players.forEach((p, index) => {
+              gameData.playerProgress[p.id] = {
+                  needed: [1, 2, 3, 4, 5, 6],
+                  collectedCount: 0,
+                  lastCollectionTime: 0,
+                  diceValue: '🎲',
+                  canRoll: true,
+                  hudColor: shuffledColors[index % shuffledColors.length]
+              };
+          });
+          updateFirestore({ gameData });
+      }
+      function handlePlayerRoll(playerId) {
+          const gameData = localRoomData.gameData;
+          const progress = gameData.playerProgress[playerId];
+          if (!progress || !progress.canRoll || gameData.status !== 'playing' || progress.needed.length === 0) return;
+
+          const roll = Math.floor(Math.random() * 6) + 1;
+          if(tickSynth) tickSynth.triggerAttackRelease("C4", "8n");
+          
+          progress.canRoll = false;
+          progress.diceValue = roll;
+          
+          if (progress.needed.includes(roll)) {
+              progress.needed = progress.needed.filter(n => n !== roll);
+              progress.collectedCount++;
+              progress.lastCollectionTime = gameData.mainTimer;
+              if(goodTapSound) goodTapSound.triggerAttackRelease("G5", "8n");
+          }
+          
+          updateFirestore({ [`gameData.playerProgress.${playerId}`]: progress });
+
+          setTimeout(() => {
+              const currentProgress = localRoomData.gameData.playerProgress[playerId];
+              if (currentProgress) {
+                  currentProgress.canRoll = true;
+                  updateFirestore({ [`gameData.playerProgress.${playerId}`]: currentProgress });
+              }
+          }, 3000);
+      }
+      function renderLuckyDiceGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData.playerProgress) return;
+          
+          const mainTimerEl = document.getElementById('lucky-dice-main-timer');
+          if(mainTimerEl) mainTimerEl.textContent = `0${Math.floor(gameData.mainTimer / 60)}:${String(gameData.mainTimer % 60).padStart(2, '0')}`;
+          
+          const playersArea = document.getElementById('lucky-dice-players-area');
+          playersArea.innerHTML = '';
+          localRoomData.players.forEach(player => {
+              const progress = gameData.playerProgress[player.id];
+              const card = document.createElement('div');
+              card.id = `player-dice-card-${player.id}`;
+              card.className = `panel p-4 rounded-lg flex flex-col items-center border-4 ${progress.hudColor}`;
+              
+              let numbersHTML = '';
+              for (let i = 1; i <= 6; i++) {
+                  const isCollected = !progress.needed.includes(i);
+                  numbersHTML += `<div data-number="${i}" class="dice-number w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg ${isCollected ? 'collected' : ''}">${i}</div>`;
+              }
+
+              let buttonHTML = '';
+              if (player.id === currentUser.id) {
+                  let buttonText = 'Lancia!';
+                  let disabled = !progress.canRoll;
+                  if (progress.needed.length === 0) {
+                      buttonText = 'Completato!';
+                      disabled = true;
+                  } else if (!progress.canRoll) {
+                      buttonText = '...';
+                  }
+                  buttonHTML = `<button onclick="handlePlayerRoll('${player.id}')" class="btn-primary font-bold py-2 px-4 rounded-lg mt-4 w-full" ${disabled ? 'disabled' : ''}>${buttonText}</button>`;
+              }
+
+              card.innerHTML = `
+                  <img src="${player.character.imageUrl}" class="w-20 h-20 rounded-full object-cover">
+                  <span class="font-bold mt-2">${player.nickname}</span>
+                  <div class="flex justify-center gap-1.5 mt-2">
+                      ${numbersHTML}
+                  </div>
+                  <div class="player-dice-display text-7xl font-black my-2 h-24 flex items-center justify-center">${progress.diceValue}</div>
+                  ${buttonHTML}
+              `;
+              playersArea.appendChild(card);
+          });
+
+          const leaderboardEl = document.getElementById('lucky-dice-leaderboard');
+          leaderboardEl.innerHTML = '';
+          const sortedPlayers = [...localRoomData.players].sort((a, b) => {
+              const progressA = gameData.playerProgress[a.id];
+              const progressB = gameData.playerProgress[b.id];
+              if (progressA.collectedCount !== progressB.collectedCount) {
+                  return progressB.collectedCount - progressA.collectedCount;
+              }
+              return progressB.lastCollectionTime - progressA.lastCollectionTime;
+          });
+
+          sortedPlayers.forEach((p, index) => {
+              const rankIcon = ['🥇', '🥈', '🥉'][index] || `<span class="text-slate-400">${index + 1}</span>`;
+              const playerDiv = document.createElement('div');
+              playerDiv.className = 'flex items-center gap-3 p-2 bg-slate-900/50 rounded-lg';
+              playerDiv.innerHTML = `
+                  <span class="font-bold text-xl w-8 text-center">${rankIcon}</span>
+                  <img src="${p.character.imageUrl}" class="w-10 h-10 rounded-full object-cover">
+                  <span class="font-semibold">${p.nickname}</span>
+              `;
+              leaderboardEl.appendChild(playerDiv);
+          });
+      }
+      function endLuckyDiceGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          
+          const sortedPlayers = [...localRoomData.players].sort((a, b) => {
+              const progressA = gameData.playerProgress[a.id];
+              const progressB = gameData.playerProgress[b.id];
+              if (progressA.collectedCount !== progressB.collectedCount) {
+                  return progressB.collectedCount - progressA.collectedCount;
+              }
+              return progressB.lastCollectionTime - progressA.lastCollectionTime;
+          });
+          
+          if (localRoomData.gameMode === 'championship') {
+              awardChampionshipPoints(sortedPlayers);
+          } else {
+              sortedPlayers.forEach((player, index) => {
+                  player.score = gameData.playerProgress[player.id].collectedCount;
+              });
+          }
+
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+      
+      // --- LOGICA BOMBA (REFACTORED) ---
+      function initializeBombGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({ gameData: { type: 'bomb', status: 'intro' } });
+      }
+      function startBombGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = {
+              ...localRoomData.gameData,
+              status: 'playing',
+              activePlayerIds: localRoomData.players.map(p => p.id),
+              eliminatedPlayerIds: [],
+              bombHolderIndex: Math.floor(Math.random() * localRoomData.players.length)
+          };
+          updateFirestore({ gameData });
+      }
+      function handlePassBomb() {
+          const gameData = localRoomData.gameData;
+          const currentPlayerId = gameData.activePlayerIds[gameData.bombHolderIndex];
+          if (isActionLocked || currentUser.id !== currentPlayerId) return;
+
+          isActionLocked = true;
+          const nextIndex = (gameData.bombHolderIndex + 1) % gameData.activePlayerIds.length;
+          updateFirestore({ 'gameData.bombHolderIndex': nextIndex });
+      }
+      function renderBombGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData || gameData.status !== 'playing') return;
+
+          document.getElementById('bomb-title').textContent = `Bomba - ${gameData.activePlayerIds.length} giocatori rimasti`;
+          if (gameData.activePlayerIds.length <= 1) {
+              document.getElementById('bomb-title').textContent = 'Bomba - Vincitore!';
+          }
+
+          const circle = document.getElementById('bomb-players-circle');
+          circle.innerHTML = '';
+          const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
+          const angleStep = 360 / activePlayers.length;
+          const bombHolderId = gameData.activePlayerIds[gameData.bombHolderIndex];
+
+          activePlayers.forEach((player, index) => {
+              const angle = angleStep * index;
+              const x = 50 + 45 * Math.cos(angle * Math.PI / 180);
+              const y = 50 + 45 * Math.sin(angle * Math.PI / 180);
+              
+              const playerEl = document.createElement('div');
+              playerEl.className = 'bomb-player relative';
+              playerEl.style.left = `${x}%`;
+              playerEl.style.top = `${y}%`;
+
+              let bombHTML = '';
+              if (player.id === bombHolderId) {
+                  playerEl.classList.add('has-bomb');
+                  bombHTML = '<span class="absolute -top-4 -right-4 text-4xl animate-pulse">💣</span>';
+              }
+
+              playerEl.innerHTML = `
+                  ${bombHTML}
+                  <img src="${player.character.imageUrl}" class="w-16 h-16 rounded-full object-cover">
+                  <div class="bg-black/50 p-1 rounded -mt-2">${player.nickname}</div>
+              `;
+              circle.appendChild(playerEl);
+          });
+
+          const eliminatedPlayersArea = document.getElementById('bomb-eliminated-players');
+          eliminatedPlayersArea.innerHTML = '';
+          gameData.eliminatedPlayerIds.forEach(playerId => {
+              const player = localRoomData.players.find(p => p.id === playerId);
+              eliminatedPlayersArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover grayscale opacity-50" title="Eliminato: ${player.nickname}">`;
+          });
+          
+          document.getElementById('pass-bomb-btn').disabled = (currentUser.id !== bombHolderId || isActionLocked);
+      }
+      function endBombGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          
+          const winnerId = gameData.activePlayerIds[0];
+          
+          if (localRoomData.gameMode === 'championship') {
+              const finalRanking = [
+                  ...localRoomData.players.filter(p => p.id === winnerId),
+                  ...[...gameData.eliminatedPlayerIds].reverse().map(id => localRoomData.players.find(p => p.id === id))
+              ];
+              awardChampionshipPoints(finalRanking);
+          } else {
+              localRoomData.players.forEach(p => {
+                  p.score = (p.id === winnerId) ? 1 : 0;
+              });
+          }
+          
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+      
+      // --- LOGICA SUCCOFONO (REFACTORED) ---
+      const JUICE_CLICK_FILL = 2.5;
+      const JUICE_PENALTY_DRAIN = 5;
+      const MAX_JUICE_LEVEL = 100;
+      const JUICE_COLORS = ["#ff6347", "#90ee90", "#add8e6", "#ffd700", "#dda0dd", "#ff7f50", "#00ced1", "#ffc0cb"];
+
+      function initializeSuccofonoGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({ gameData: { type: 'succofono', status: 'intro' } });
+      }
+      function startSuccofonoGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = {
+              ...localRoomData.gameData,
+              status: 'playing',
+              light: 'red',
+              players: {}
+          };
+          const shuffledColors = [...JUICE_COLORS].sort(() => 0.5 - Math.random());
+          localRoomData.players.forEach((p, index) => {
+              gameData.players[p.id] = { 
+                  juice: 0, 
+                  isFinished: false,
+                  finishTime: null,
+                  juiceColor: shuffledColors[index % shuffledColors.length]
+              };
+          });
+          updateFirestore({ gameData });
+      }
+      function handleDrinkPress(playerId = currentUser.id) {
+          const gameData = localRoomData.gameData;
+          const pData = gameData.players[playerId];
+          if (!pData || pData.isFinished || gameData.status !== 'playing') return;
+
+          let newJuice = pData.juice;
+          if (gameData.light === 'green') {
+              newJuice = Math.min(MAX_JUICE_LEVEL, pData.juice + JUICE_CLICK_FILL);
+              if(drinkSynth) drinkSynth.triggerAttackRelease('C4', '16n');
+          } else { // Red light
+              newJuice = Math.max(0, pData.juice - JUICE_PENALTY_DRAIN);
+              if(badTapSound) badTapSound.triggerAttackRelease('A2', '8n');
+          }
+          
+          const update = { [`gameData.players.${playerId}.juice`]: newJuice };
+          if (newJuice >= MAX_JUICE_LEVEL) {
+              update[`gameData.players.${playerId}.isFinished`] = true;
+              update[`gameData.players.${playerId}.finishTime`] = Date.now();
+          }
+          updateFirestore(update);
+      }
+      function renderSuccofonoGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData || !gameData.players) return;
+          
+          document.getElementById('succofono-traffic-light').className = `traffic-light ${gameData.light}`;
+          
+          const playersArea = document.getElementById('succofono-players-area');
+          playersArea.innerHTML = '';
+          localRoomData.players.forEach(p => {
+              const pData = gameData.players[p.id];
+              const playerContainer = document.createElement('div');
+              playerContainer.className = 'player-container panel p-2 rounded-lg';
+              if (pData.isFinished) playerContainer.classList.add('eliminated');
+              
+              playerContainer.innerHTML = `
+                   <img src="${p.character.imageUrl}" class="w-16 h-16 rounded-full object-cover mb-2">
+                   <span class="font-bold text-sm mb-2">${p.nickname}</span>
+                   <div class="juice-glass">
+                       <div class="juice-fill" style="height: ${pData.juice}%; background-color: ${pData.juiceColor};"></div>
+                   </div>
+              `;
+              playersArea.appendChild(playerContainer);
+          });
+      }
+      function endSuccofonoGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+
+          const sortedPlayers = [...localRoomData.players].sort((a, b) => {
+              const pA = gameData.players[a.id];
+              const pB = gameData.players[b.id];
+              if (pA.isFinished && !pB.isFinished) return -1;
+              if (!pA.isFinished && pB.isFinished) return 1;
+              if (pA.isFinished && pB.isFinished) return pA.finishTime - pB.finishTime;
+              return pB.juice - pA.juice;
+          });
+          
+          if (localRoomData.gameMode === 'championship') {
+              awardChampionshipPoints(sortedPlayers);
+          } else {
+              sortedPlayers.forEach((player, index) => {
+                  player.score = Math.max(0, (localRoomData.players.length - index - 1) * 2);
+              });
+          }
+
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+      
+      // --- LOGICA ICONA MISTERIOSA ---
+      function initializeHideAndSeekGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+           hideIntroOverlay('hns-intro-overlay', () => {
+              const gameData = { 
+                  type: 'hide-and-seek', 
+                  status: 'round-start',
+                  seekerOrder: [...localRoomData.players].sort(() => Math.random() - 0.5).map(p => p.id),
+                  currentSeekerIndex: 0,
+                  round: 0,
+                  tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+              };
+              updateFirestore({ gameData });
+           });
+      }
+      function startHnsRound() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          const newRoundData = {
+              ...gameData,
+              round: gameData.round + 1,
+              status: 'hiding',
+              seekerId: gameData.seekerOrder[gameData.currentSeekerIndex],
+              hiders: localRoomData.players.filter(p => p.id !== gameData.seekerOrder[gameData.currentSeekerIndex]).map(p => ({ id: p.id, spotId: null, found: false })),
+              hidingSpots: [],
+              timer: 15,
+              attemptsLeft: 5
+          };
+
+          const numSpots = 7;
+          for(let i = 0; i < numSpots; i++) {
+              const angle = (i / numSpots) * 2 * Math.PI;
+              newRoundData.hidingSpots.push({
+                  id: i,
+                  x: 50 + 35 * Math.cos(angle),
+                  y: 50 + 35 * Math.sin(angle),
+                  color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                  clicked: false
+              });
+          }
+          updateFirestore({ gameData: newRoundData });
+      }
+      function handleHnsSpotClick(spotId) {
+          const gameData = localRoomData.gameData;
+          const me = localRoomData.players.find(p => p.id === currentUser.id);
+
+          if (gameData.status === 'hiding' && me.id !== gameData.seekerId) {
+              const hidersCopy = [...gameData.hiders];
+              const myHiderData = hidersCopy.find(h => h.id === me.id);
+              myHiderData.spotId = spotId;
+              if(hideSound) hideSound.triggerAttackRelease("C4", "8n");
+              updateFirestore({ 'gameData.hiders': hidersCopy });
+          } else if (gameData.status === 'seeking' && me.id === gameData.seekerId) {
+              const spot = gameData.hidingSpots.find(s => s.id === spotId);
+              if (spot.clicked) return;
+
+              const newSpots = [...gameData.hidingSpots];
+              newSpots[spotId].clicked = true;
+              
+              const hidersCopy = [...gameData.hiders];
+              const hiderInSpot = hidersCopy.find(h => h.spotId === spotId && !h.found);
+              
+              const newTempScores = { ...gameData.tempScores };
+
+              if (hiderInSpot) {
+                  hiderInSpot.found = true;
+                  if(foundSound) foundSound.triggerAttackRelease("G5", "4n");
+                  newTempScores[gameData.seekerId]++;
+              } else {
+                  if(badTapSound) badTapSound.triggerAttackRelease("C3", "8n");
+              }
+              
+              updateFirestore({
+                  'gameData.hidingSpots': newSpots,
+                  'gameData.attemptsLeft': gameData.attemptsLeft - 1,
+                  'gameData.hiders': hidersCopy,
+                  'gameData.tempScores': newTempScores
+              });
+          }
+      }
+      function endHnsRound() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          
+          const newTempScores = { ...gameData.tempScores };
+          gameData.hiders.forEach(h => {
+              if (!h.found) {
+                  newTempScores[h.id] += 2;
+              }
+          });
+
+          const nextSeekerIndex = gameData.currentSeekerIndex + 1;
+          if (nextSeekerIndex >= localRoomData.players.length) {
+              updateFirestore({ 'gameData.status': 'finished', 'gameData.tempScores': newTempScores });
+          } else {
+              updateFirestore({ 
+                  'gameData.status': 'round-start', 
+                  'gameData.currentSeekerIndex': nextSeekerIndex,
+                  'gameData.tempScores': newTempScores
+              });
+          }
+      }
+      function renderHideAndSeekGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData) return;
+
+          const arena = document.getElementById('hns-arena');
+          const statusText = document.getElementById('hns-status-text');
+          const capturedArea = document.getElementById('hns-captured-area');
+          arena.innerHTML = '';
+          capturedArea.innerHTML = '';
+
+          const me = localRoomData.players.find(p => p.id === currentUser.id);
+          const isSeeker = gameData.seekerId && me.id === gameData.seekerId;
+          const seeker = localRoomData.players.find(p => p.id === gameData.seekerId);
+          
+          if (gameData.status === 'hiding') {
+              statusText.textContent = isSeeker ? `Tu sei il cercatore! Attendi...` : `Nasconditi! Tempo: ${gameData.timer}s`;
+          } else if (gameData.status === 'seeking') {
+              const hidersLeft = gameData.hiders ? gameData.hiders.filter(h => !h.found).length : 0;
+              statusText.textContent = isSeeker ? `Trovali! ${hidersLeft} rimasti. Tentativi: ${gameData.attemptsLeft}` : `Nasconditi! ${seeker.nickname} sta cercando...`;
+          } else if (gameData.status === 'round-reveal') {
+              const notFoundHiders = gameData.hiders.filter(h => !h.found);
+              if (notFoundHiders.length > 0) {
+                  const names = notFoundHiders.map(h => localRoomData.players.find(p => p.id === h.id).nickname).join(', ');
+                  statusText.textContent = `Salvi: ${names}!`;
+              } else {
+                  statusText.textContent = 'Tutti trovati!';
+              }
+          }
+
+          // Render Seeker in the middle
+          if (seeker) {
+              const seekerEl = document.createElement('div');
+              seekerEl.className = 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center';
+              seekerEl.innerHTML = `<img src="${seeker.character.imageUrl}" class="w-24 h-24 rounded-full object-cover border-4 border-red-500"><div class="bg-red-600 text-white font-bold p-1 rounded mt-1">Cercatore</div>`;
+              arena.appendChild(seekerEl);
+          }
+
+          if (gameData.hidingSpots) {
+              gameData.hidingSpots.forEach(spot => {
+                  if (spot.clicked && gameData.status !== 'round-reveal') return; 
+                  const spotEl = document.createElement('div');
+                  spotEl.className = 'hns-icon';
+                  spotEl.style.left = `calc(${spot.x}% - 40px)`;
+                  spotEl.style.top = `calc(${spot.y}% - 40px)`;
+                  spotEl.style.backgroundColor = spot.color;
+                  
+                  const myChoice = gameData.hiders.find(h => h.id === me.id)?.spotId;
+                  if (gameData.status === 'hiding' && !isSeeker) {
+                      spotEl.classList.add('hiding-spot');
+                      if (myChoice === spot.id) spotEl.classList.add('selected-spot');
+                      spotEl.onclick = () => handleHnsSpotClick(spot.id);
+                  } else if (gameData.status === 'seeking' && isSeeker) {
+                      spotEl.classList.add('hiding-spot');
+                      spotEl.onclick = () => handleHnsSpotClick(spot.id);
+                  }
+                  
+                  const hidersInSpot = gameData.hiders.filter(h => h.spotId === spot.id);
+                  if (gameData.status === 'hiding' && !isSeeker) {
+                      hidersInSpot.forEach(h => {
+                          const player = localRoomData.players.find(p => p.id === h.id);
+                          spotEl.innerHTML += `<img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover opacity-50">`;
+                      });
+                  }
+                  
+                  if (hidersInSpot.length > 0 && (hidersInSpot.some(h => h.found) || gameData.status === 'round-reveal')) {
+                      spotEl.classList.add('disappeared');
+                      hidersInSpot.forEach(hider => {
+                          const player = localRoomData.players.find(p => p.id === hider.id);
+                          const avatarEl = document.createElement('img');
+                          avatarEl.src = player.character.imageUrl;
+                          avatarEl.className = 'hns-player-avatar revealed';
+                          avatarEl.style.left = `calc(${spot.x}% - 25px)`;
+                          avatarEl.style.top = `calc(${spot.y}% - 25px)`;
+                          arena.appendChild(avatarEl);
+                      });
+                  }
+                  
+                  arena.appendChild(spotEl);
+              });
+          }
+
+          if (gameData.hiders) {
+              const foundHiders = gameData.hiders.filter(h => h.found);
+              foundHiders.forEach(h => {
+                  const player = localRoomData.players.find(p => p.id === h.id);
+                  capturedArea.innerHTML += `<img src="${player.character.imageUrl}" class="w-10 h-10 rounded-full object-cover" title="${player.nickname}">`;
+              });
+          }
+          const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
+          updateLeaderboard(document.getElementById('hns-leaderboard'), tempScorePlayers);
+      }
+      function endHnsGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          
+          if (localRoomData.gameMode === 'championship') {
+              const playersWithTempScore = localRoomData.players.map(p => ({
+                  ...p,
+                  tempScore: localRoomData.gameData.tempScores[p.id] || 0
+              }));
+              const sortedPlayers = playersWithTempScore.sort((a,b) => b.tempScore - a.tempScore);
+              awardChampionshipPoints(sortedPlayers);
+          } else {
+              localRoomData.players.forEach(p => p.score = localRoomData.gameData.tempScores[p.id] || 0);
+          }
+
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+      
+      // --- LOGICA TOCCO AL VOLO ---
+      const TAG_ITEMS = {
+          positive: [ { id: 'star', url: 'https://em-content.zobj.net/source/apple/354/star_2b50.png', score: 1 }, { id: 'heart', url: 'https://em-content.zobj.net/source/apple/354/red-heart_2764-fe0f.png', score: 1 } ],
+          negative: [ { id: 'bomb', url: 'https://em-content.zobj.net/source/apple/354/bomb_1f4a3.png', score: -1 }, { id: 'skull', url: 'https://em-content.zobj.net/source/apple/354/skull_1f480.png', score: -1 } ],
+      };
+      function initializeTouchAndGoGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          updateFirestore({ gameData: { type: 'touch-and-go', status: 'intro' } });
+      }
+      function startTouchAndGoGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+           const gameData = {
+              ...localRoomData.gameData,
+              status: 'playing',
+              timer: 60,
+              tempScores: localRoomData.players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
+           };
+           updateFirestore({ gameData });
+      }
+      function populateTagLegend() {
+          const posLegend = document.getElementById('tag-positive-legend');
+          const negLegend = document.getElementById('tag-negative-legend');
+          posLegend.innerHTML = TAG_ITEMS.positive.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
+          negLegend.innerHTML = TAG_ITEMS.negative.map(item => `<img src="${item.url}" class="w-8 h-8">`).join('');
+      }
+      function updateTouchAndGoGame(source) {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          if(source === 'timer') {
+              const newTimer = gameData.timer - 1;
+              if (newTimer <= 0) {
+                  endTouchAndGoGame();
+              } else {
+                  updateFirestore({ 'gameData.timer': newTimer });
+              }
+          }
+      }
+      function spawnTagItem() {
+          // Questa funzione ora è solo per l'host
+          if (localRoomData.hostId !== currentUser.id) return;
+
+          const isPositive = Math.random() > 0.3;
+          const itemType = isPositive ? 'positive' : 'negative';
+          const itemData = TAG_ITEMS[itemType][Math.floor(Math.random() * TAG_ITEMS[itemType].length)];
+          
+          const newItem = {
+              id: `item_${Date.now()}_${Math.random()}`,
+              ...itemData,
+              x: Math.random() * 90,
+              y: Math.random() * 90
+          };
+          
+          updateFirestore({
+              'gameData.items': firebase.firestore.FieldValue.arrayUnion(newItem)
+          });
+
+          setTimeout(() => {
+              updateFirestore({
+                  'gameData.items': firebase.firestore.FieldValue.arrayRemove(newItem)
+              });
+          }, 4000 + Math.random() * 2000);
+      }
+      function handleTagItemClick(itemId) {
+          const gameData = localRoomData.gameData;
+          const item = gameData.items.find(i => i.id === itemId);
+          if (!item) return;
+
+          const score = item.score;
+          const newTempScores = { ...gameData.tempScores };
+          newTempScores[currentUser.id] = (newTempScores[currentUser.id] || 0) + score;
+
+          if(score > 0 && goodTapSound) goodTapSound.triggerAttackRelease('C5', '8n');
+          if(score < 0 && badTapSound) badTapSound.triggerAttackRelease('C3', '8n');
+          
+          const newItems = gameData.items.filter(i => i.id !== itemId);
+          updateFirestore({ 
+              'gameData.tempScores': newTempScores,
+              'gameData.items': newItems
+          });
+      }
+      function renderTouchAndGoGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData) return;
+          document.getElementById('tag-timer').textContent = `00:${String(gameData.timer || 0).padStart(2, '0')}`;
+          const userScore = gameData.tempScores[currentUser.id] || 0;
+          document.getElementById('tag-player-score').textContent = userScore;
+          
+          const arena = document.getElementById('tag-arena');
+          arena.innerHTML = '';
+          if (gameData.items) {
+              gameData.items.forEach(item => {
+                  const itemEl = document.createElement('img');
+                  itemEl.src = item.url;
+                  itemEl.className = `tag-item ${item.score > 0 ? 'positive' : 'negative'}`;
+                  itemEl.style.left = `${item.x}%`;
+                  itemEl.style.top = `${item.y}%`;
+                  itemEl.onclick = () => handleTagItemClick(item.id);
+                  arena.appendChild(itemEl);
+              });
+          }
+
+          const tempScorePlayers = localRoomData.players.map(p => ({...p, score: gameData.tempScores[p.id] || 0 }));
+          updateLeaderboard(document.getElementById('tag-leaderboard'), tempScorePlayers);
+      }
+      function endTouchAndGoGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          
+          const sortedPlayers = [...localRoomData.players].sort((a,b) => (gameData.tempScores[b.id] || 0) - (gameData.tempScores[a.id] || 0));
+
+          if (localRoomData.gameMode === 'championship') {
+              awardChampionshipPoints(sortedPlayers);
+          } else {
+              localRoomData.players.forEach(p => p.score = gameData.tempScores[p.id] || 0);
+          }
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+
+      // --- LOGICA PORTA DELLA MORTE ---
+      const DOOR_COLORS = ["bg-red-800", "bg-blue-800", "bg-green-800", "bg-yellow-800", "bg-purple-800", "bg-pink-800", "bg-indigo-800", "bg-teal-800", "bg-gray-800", "bg-orange-800", "bg-lime-800", "bg-cyan-800", "bg-fuchsia-800", "bg-rose-800"];
+      
+      function initializeDeathDoorGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = {
+              type: 'death-door', status: 'intro', round: 0,
+              activePlayerIds: localRoomData.players.map(p => p.id),
+              eliminatedPlayerIds: [], doors: [], choices: {}, timer: 15,
+          };
+          updateFirestore({ gameData });
+      }
+      function startDeathDoorRound() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          
+          const newRoundData = {
+              ...gameData,
+              round: gameData.round + 1,
+              status: 'choosing',
+              choices: {},
+              timer: 15,
+              doors: []
+          };
+
+          const numDoors = gameData.activePlayerIds.length;
+          const cursedDoorIndex = Math.floor(Math.random() * numDoors);
+          const shuffledColors = [...DOOR_COLORS].sort(() => 0.5 - Math.random());
+          for (let i = 0; i < numDoors; i++) {
+              newRoundData.doors.push({
+                  id: i, isCursed: i === cursedDoorIndex, isOpen: false,
+                  chosenBy: null, color: shuffledColors[i]
+              });
+          }
+          updateFirestore({ gameData: newRoundData });
+      }
+      function handleDoorClick(doorId) {
+          const gameData = localRoomData.gameData;
+          if (isActionLocked || gameData.status !== 'choosing' || gameData.choices[currentUser.id] !== undefined) return;
+          
+          const door = gameData.doors.find(d => d.id === doorId);
+          if (door.chosenBy) {
+              showModal("Questa porta è già stata scelta!"); return;
+          }
+          
+          isActionLocked = true;
+          updateFirestore({ [`gameData.choices.${currentUser.id}`]: doorId });
+      }
+      function renderDeathDoorGame() {
+          const gameData = localRoomData.gameData;
+          if (!gameData) return;
+
+          const gameContentEl = document.getElementById('dd-game-content');
+          document.getElementById('dd-round-title').textContent = `Round ${gameData.round}`;
+          document.getElementById('dd-timer').textContent = gameData.timer;
+          const statusText = document.getElementById('dd-status-text');
+          const doorsArea = document.getElementById('dd-doors-area');
+          const eliminatedArea = document.getElementById('dd-eliminated-area');
+          
+          doorsArea.innerHTML = '';
+          eliminatedArea.innerHTML = '';
+          gameContentEl.querySelectorAll('.dd-player-avatar').forEach(el => el.remove());
+
+          switch(gameData.status) {
+              case 'choosing': statusText.textContent = "Scegli saggiamente..."; break;
+              case 'revealing': statusText.textContent = "Il destino si compie!"; break;
+              default: statusText.textContent = "";
+          }
+
+          if (gameData.doors) {
+              gameData.doors.forEach((door) => {
+                  const doorEl = document.createElement('div');
+                  doorEl.className = 'dd-door w-24 h-36 sm:w-28 sm:h-44';
+                  if (door.isOpen) doorEl.classList.add('open');
+                  if (door.chosenBy === currentUser.id && !door.isOpen) doorEl.classList.add('selected');
+                  
+                  doorEl.innerHTML = `
+                      <div class="dd-door-inner">
+                          <div class="dd-door-front ${door.color}"><span>?</span></div>
+                          <div class="dd-door-back ${door.isCursed ? 'cursed' : 'safe'}">${door.isCursed ? '💀' : '✔️'}</div>
+                      </div>`;
+                  
+                  if (gameData.status === 'choosing' && !door.chosenBy) {
+                      doorEl.onclick = () => handleDoorClick(door.id);
+                  }
+                  doorsArea.appendChild(doorEl);
+              });
+          }
+
+          const activePlayers = localRoomData.players.filter(p => gameData.activePlayerIds.includes(p.id));
+          activePlayers.forEach((player, index) => {
+              const avatarEl = document.createElement('div');
+              avatarEl.className = 'dd-player-avatar';
+              avatarEl.id = `dd-avatar-${player.id}`;
+              avatarEl.innerHTML = `
+                  <img src="${player.character.imageUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-white shadow-lg">
+                  <div class="bg-black/50 text-white text-xs font-bold p-1 rounded -mt-2">${player.nickname}</div>`;
+              
+              gameContentEl.appendChild(avatarEl);
+              const choice = gameData.choices[player.id];
+              
+              let targetLeft, targetTop;
+              if (gameData.status !== 'intro' && choice !== undefined) {
+                  const doorEl = doorsArea.children[choice];
+                  if (doorEl) {
+                      targetLeft = `${doorEl.offsetLeft + doorEl.offsetWidth / 2}px`;
+                      targetTop = `${doorEl.offsetTop - 40}px`;
+                  }
+              } else {
+                  targetLeft = `${(index + 0.5) * (100 / activePlayers.length)}%`;
+                  targetTop = '120px';
+              }
+              avatarEl.style.left = targetLeft;
+              avatarEl.style.top = targetTop;
+              avatarEl.style.transform = 'translateX(-50%)';
+          });
+          
+          const eliminatedPlayers = localRoomData.players.filter(p => gameData.eliminatedPlayerIds.includes(p.id));
+          eliminatedPlayers.forEach(player => {
+              const eliminatedEl = document.createElement('div');
+              eliminatedEl.className = 'text-center';
+              eliminatedEl.innerHTML = `
+                  <img src="${player.character.imageUrl}" class="w-12 h-12 rounded-full object-cover border-2 border-red-500 grayscale">
+                  <div class="text-xs text-slate-400">${player.nickname}</div>`;
+              eliminatedArea.appendChild(eliminatedEl);
+              
+              const avatarInArena = document.getElementById(`dd-avatar-${player.id}`);
+              if (avatarInArena) {
+                  avatarInArena.classList.add('eliminated');
+              }
+          });
+      }
+      function endDeathDoorGame() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const gameData = localRoomData.gameData;
+          
+          const winnerId = gameData.activePlayerIds[0];
+          
+          if (localRoomData.gameMode === 'championship') {
+              const finalRanking = [
+                  ...localRoomData.players.filter(p => p.id === winnerId),
+                  ...[...gameData.eliminatedPlayerIds].reverse().map(id => localRoomData.players.find(p => p.id === id))
+              ];
+              awardChampionshipPoints(finalRanking);
+          } else {
+              localRoomData.players.forEach(p => {
+                  p.score = (p.id === winnerId) ? 1 : 0;
+              });
+          }
+
+          const newState = localRoomData.gameMode === 'championship' ? 'round-end' : 'free-play-finished';
+          updateFirestore({ gameState: newState, players: localRoomData.players });
+      }
+
+      // --- FUNZIONI DI FINE GIOCO E UTILITY ---
+      function awardChampionshipPoints(sortedPlayerList) {
+          const pointsDistribution = {
+              '8': [10, 8, 6, 5, 4, 3, 2, 1],
+              '12': [15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+          };
+          const numPlayers = localRoomData.players.length;
+          let points = pointsDistribution[numPlayers] || pointsDistribution['8']; // Default a 8
+
+          sortedPlayerList.forEach((sortedPlayer, index) => {
+              const playerInRoom = localRoomData.players.find(p => p.id === sortedPlayer.id);
+              if (playerInRoom) {
+                  playerInRoom.score += points[index] || 0;
+              }
+          });
+      }
+
+      function renderSummaryScreen() {
+          const { players, gameState, currentRound, championshipRounds, gameMode, currentGame } = localRoomData;
+          const title = document.getElementById('summary-title');
+          const subtitle = document.getElementById('summary-subtitle');
+          const leaderboard = document.getElementById('summary-leaderboard');
+          const controls = document.getElementById('summary-controls');
+          leaderboard.innerHTML = '';
+          controls.innerHTML = '';
+          const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+          if (gameState === 'championship-finished') {
+              title.textContent = '🏆 Campionato Finito! 🏆';
+              subtitle.textContent = `Il vincitore assoluto è ${sortedPlayers[0].nickname}!`;
+              const menuBtn = document.createElement('button');
+              menuBtn.textContent = 'Torna al Menu Principale';
+              menuBtn.className = 'btn-primary text-white font-bold py-3 px-6 rounded-lg';
+              menuBtn.onclick = () => { localRoomData = null; showScreen('lobby'); };
+              controls.appendChild(menuBtn);
+          } else if (gameState === 'round-end') {
+              title.textContent = `Fine del Round ${currentRound}`;
+              subtitle.textContent = `Ecco la classifica attuale.`;
+              const continueBtn = document.createElement('button');
+              continueBtn.textContent = 'Prosegui al Prossimo Round';
+              continueBtn.className = 'btn-secondary text-white font-bold py-3 px-6 rounded-lg';
+              continueBtn.onclick = advanceChampionship;
+              controls.appendChild(continueBtn);
+          } else if (gameState === 'free-play-finished') {
+              const gameNameMap = {'rps': 'Morra Cinese', 'memory': 'Memory', 'lucky-dice': 'Dado Fortunato', 'bomb': 'Bomba', 'succofono': 'Succofono', 'hide-and-seek': 'Icona Misteriosa', 'touch-and-go': 'Tocco al Volo', 'death-door': 'Porta della Morte'};
+              title.textContent = `🎉 Partita di ${gameNameMap[currentGame] || 'Gioco'} Finita! 🎉`;
+              subtitle.textContent = `Complimenti a tutti i giocatori!`;
+              const menuBtn = document.createElement('button');
+              menuBtn.textContent = 'Scegli un Altro Gioco';
+              menuBtn.className = 'btn-primary text-white font-bold py-3 px-6 rounded-lg';
+              menuBtn.onclick = () => { localRoomData.gameState = 'minigame-selection'; renderAll(); };
+              controls.appendChild(menuBtn);
+          }
+          sortedPlayers.forEach((p, index) => {
+              const playerDiv = document.createElement('div');
+              const rankIcon = ['🥇', '🥈', '🥉'][index] || `<span class="text-slate-400">${index + 1}°</span>`;
+              playerDiv.className = 'flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600';
+              playerDiv.innerHTML = `
+                  <div class="flex items-center gap-4">
+                      <span class="text-3xl w-8 text-center">${rankIcon}</span>
+                      <img src="${p.character.imageUrl}" class="w-12 h-12 rounded-full object-cover">
+                      <span class="font-semibold text-xl">${p.nickname}</span>
+                  </div>
+                  <span class="font-bold text-2xl text-cyan-300">${p.score}</span>`;
+              leaderboard.appendChild(playerDiv);
+          });
+      }
+      
+      function advanceChampionship() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          const nextRound = localRoomData.currentRound + 1;
+          if (nextRound > localRoomData.championshipRounds) {
+              updateFirestore({ gameState: 'championship-finished' });
+          } else {
+              updateFirestore({ 
+                  gameState: 'in-game',
+                  currentRound: nextRound,
+                  gameData: null,
+                  currentGame: localRoomData.gameSequence[nextRound - 1] || 'memory',
+                  currentPlayerIndex: Math.floor(Math.random() * localRoomData.players.length)
+              });
+          }
+      }
+
+      function updateLeaderboard(leaderboardElement, players, currentPlayerId = null) {
+          leaderboardElement.innerHTML = '';
+          const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+          sortedPlayers.forEach((p, index) => {
+              const playerDiv = document.createElement('div');
+              let highlightClass = 'bg-slate-700/50 border-slate-600';
+              if (currentPlayerId && p.id === currentPlayerId) {
+                  highlightClass = 'bg-cyan-600/50 scale-105 shadow-lg border-cyan-400';
+              }
+              playerDiv.className = `flex items-center justify-between p-2 rounded-lg transition-all duration-300 border ${highlightClass}`;
+              playerDiv.innerHTML = `
+                  <div class="flex items-center gap-2">
+                      <span class="font-bold text-slate-400 w-6">${index + 1}.</span>
+                      <img src="${p.character.imageUrl}" class="w-8 h-8 rounded-full object-cover">
+                      <span class="font-semibold">${p.nickname}</span>
+                  </div>
+                  <span class="font-bold text-xl text-cyan-300">${p.score}</span>`;
+              leaderboardElement.appendChild(playerDiv);
+          });
+      }
+      
     </script>
 </body>
 </html>
