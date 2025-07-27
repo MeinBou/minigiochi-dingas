@@ -473,6 +473,7 @@
             <p id="character-selection-status" class="text-slate-400 mb-6">Tutti i giocatori devono scegliere un personaggio.</p>
             <div id="roster-grid" class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-4 mb-6 max-h-[60vh] overflow-y-auto p-2"></div>
             <button id="confirm-character-btn" class="btn-secondary text-white font-bold py-3 px-6 rounded-lg disabled:bg-slate-600 disabled:cursor-not-allowed" disabled>Conferma Scelta</button>
+            <button id="force-start-game-btn" class="hidden mt-4 btn-primary text-white font-bold py-3 px-6 rounded-lg">Avvia Partita</button>
         </div>
 
         <!-- Schermata Lobby -->
@@ -1025,6 +1026,7 @@
           document.getElementById('succofono-start-btn').addEventListener('click', startSuccofonoGame);
           document.getElementById('hns-start-btn').addEventListener('click', initializeHideAndSeekGame);
           document.getElementById('tag-start-btn').addEventListener('click', startTouchAndGoGame);
+          document.getElementById('force-start-game-btn').addEventListener('click', finalizeCharacterSelectionAndStart);
 
           setupRosterGrid();
       });
@@ -1256,7 +1258,16 @@
           const humanPlayers = localRoomData.players.filter(p => !p.isCPU);
           const selectedPlayers = humanPlayers.filter(p => p.hasSelectedCharacter);
           const statusEl = document.getElementById('character-selection-status');
+          const forceStartBtn = document.getElementById('force-start-game-btn');
+          const isHost = localRoomData.hostId === currentUser.id;
+
           statusEl.textContent = `In attesa di ${humanPlayers.length - selectedPlayers.length} giocatori...`;
+          
+          if (isHost && humanPlayers.length === selectedPlayers.length) {
+              forceStartBtn.classList.remove('hidden');
+          } else {
+              forceStartBtn.classList.add('hidden');
+          }
 
           const confirmBtn = document.getElementById('confirm-character-btn');
           const me = localRoomData.players.find(p => p.id === currentUser.id);
@@ -1287,6 +1298,38 @@
                   overlay.classList.remove('hidden');
               }
           });
+      }
+
+      function finalizeCharacterSelectionAndStart() {
+          if (localRoomData.hostId !== currentUser.id) return;
+          
+          const takenCharIds = new Set(localRoomData.players.map(p => p.character?.id).filter(Boolean));
+          const availableChars = ROSTER.filter(char => !takenCharIds.has(char.id));
+          availableChars.sort(() => Math.random() - 0.5);
+
+          const updatedPlayers = localRoomData.players.map(p => {
+              if (p.isCPU && !p.character) {
+                  const char = availableChars.pop();
+                  if (char) {
+                      return { ...p, character: char, nickname: char.name };
+                  }
+              }
+              return p;
+          });
+
+          let updateData = { players: updatedPlayers };
+
+          if (localRoomData.gameMode === 'free-play') {
+              updateData.gameState = 'minigame-selection';
+          } else {
+              updateData.gameState = 'in-game';
+              updateData.currentRound = 1;
+              updateData.players = updatedPlayers.map(p => ({ ...p, score: 0 }));
+              updateData.gameSequence = ['memory', 'rps', 'lucky-dice', 'bomb', 'succofono', 'hide-and-seek', 'touch-and-go', 'death-door'].sort(() => Math.random() - 0.5);
+              updateData.currentGame = updateData.gameSequence[0];
+              updateData.currentPlayerIndex = Math.floor(Math.random() * updatedPlayers.length);
+          }
+          updateFirestore(updateData);
       }
       
       function startNewGame(gameName) {
